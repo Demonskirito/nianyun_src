@@ -101,8 +101,11 @@ tmp/
 nianyun-dist.tar
 *.tar
 
-# Generated tool manifest (npm run build:manifest)
-/generated/
+# Generated tool manifest (npm run build:manifest).
+# 目录整体忽略，但把 manifest 本身纳入版本库：test/tool-manifest.test.ts 要读落盘文件，
+# CI 的 `git diff --exit-code generated/tool-manifest.json` 也需要它是 tracked 才能检出漂移。
+/generated/*
+!/generated/tool-manifest.json
 
 # Captured target assets and screenshot/GIF scratch dirs.
 # h02tmp is 141MB of PNG/GIF frames, h04tmp is real bundle JS from a live target.
@@ -113,9 +116,7 @@ nianyun-dist.tar
 /workspace/
 /reports/
 
-# WorkBuddy local workspace: the knowledge log is worth keeping,
-# the dumps / vitest tmp / staged image are not.
-.workbuddy/*
-!.workbuddy/memory/
-!.workbuddy/memory/**
+# WorkBuddy local workspace (agent notes, backups, staged image): local-only,
+# never part of the published repository.
+.workbuddy/
 

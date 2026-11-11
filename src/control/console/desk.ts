@@ -3208,13 +3208,19 @@ export class Desk {
   }
 
   projectBlackboxReport(projectId: string, sessionId: string): Record<string, unknown> {
-    const detail = this.projectBlackboxSession(projectId, sessionId);
-    if (!detail.ok) return detail;
-    const session = detail.session as Record<string, unknown>;
+    // 报告 / 验收属于内部逻辑，必须用 DB 里的完整会话（events / evidence 仍是内联数组）。
+    // projectBlackboxSession 是 HTTP 详情投影：为前端分页把这两个大数组剥离了，
+    // 只留 event_count / evidence_count / run_summary。拿它喂给 evaluateAcceptance、
+    // blackboxReport、auditAdviceHistory 会收到 undefined 并直接抛 "not iterable"。
+    // 这里直接读 DB，既保住内部逻辑，又不影响详情接口的分页瘦身。
+    const pid = workspace.safeProjectId(projectId);
+    if (!pid || !workspace.getProject(this.cfg, pid)) return { ok: false, error: "project not found" };
+    const session = this.db.getBlackboxSession(pid, sessionId);
+    if (!session) return { ok: false, error: "blackbox session not found" };
     const progress = new BlackboxProgress(session.checkpoint, { resume: false });
     return { ok: true, ...blackboxReport(session),
-      acceptance: evaluateAcceptance(progress.state, session.evidence as Record<string, unknown>[]),
-      advice_audit: auditAdviceHistory(progress.state, session.events as Parameters<typeof auditAdviceHistory>[1]) };
+      acceptance: evaluateAcceptance(progress.state, (session.evidence || []) as Record<string, unknown>[]),
+      advice_audit: auditAdviceHistory(progress.state, (session.events || []) as Parameters<typeof auditAdviceHistory>[1]) };
   }
 
   clearProjectCookies(projectId: string): Record<string, unknown> {

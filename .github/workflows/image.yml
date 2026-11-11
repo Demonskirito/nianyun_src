@@ -27,6 +27,12 @@ on:
   schedule:
     - cron: "0 3 * * 1"        # 每周一 03:00 UTC 全量构建一次
   workflow_dispatch:
+    inputs:
+      fast_base_image:
+        description: "build-fast 的 BASE_IMAGE（已发布到 GHCR 的工具镜像 tag）；留空用本地默认 nianyun:control"
+        type: string
+        required: false
+        default: ""
 
 env:
   REGISTRY: ghcr.io
@@ -38,8 +44,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: "22", cache: "npm" }
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            console/package-lock.json
       - run: npm ci
+      # npm run build 的最后一环 build:console 需要 console/ 自己的依赖
+      # (@vitejs/plugin-react / react / antd)。只装根依赖会让 vite build 直接失败。
+      - run: npm --prefix console ci
       - run: npx tsc -p tsconfig.json --noEmit
       - run: npm run build
       - name: 工具清单必须与 dist 对齐（否则镜像里少工具）
@@ -47,6 +61,12 @@ jobs:
       - run: npx vitest run --reporter=basic
 
   build-fast:
+    # Dockerfile.fast 只替换应用产物，其 FROM 的 BASE_IMAGE 默认是**本地预建**的
+    # nianyun:control 工具镜像；干净 CI 里既没有这个本地镜像、仓库也还没发布过 GHCR 包，
+    # 所以不能随 push 自动跑（否则 typecheck 一变绿、这个 job 就必然失败）。
+    # 可复现的全量构建由 build-full 在 schedule / workflow_dispatch 覆盖；
+    # 手动触发本 job 时可用 fast_base_image 指向已发布的 base。
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: typecheck-and-test
     steps:
@@ -57,6 +77,8 @@ jobs:
         with:
           context: .
           file: deploy/control/Dockerfile.fast
+          build-args: |
+            BASE_IMAGE=${{ inputs.fast_base_image || 'nianyun:control' }}
           pull: true
           no-cache: true
           push: false

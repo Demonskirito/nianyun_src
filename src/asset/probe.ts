@@ -92,7 +92,11 @@ export type ProbeJobRunResult = {
 
 export type ProbePolicy = { max_rps: number; max_concurrency: number; tls_mode?: "strict" | "diagnostic" };
 
-export async function runAssetProbeJob(db: Database, projectId: string, jobId: string, policy?: ProbePolicy): Promise<ProbeJobRunResult> {
+/** 测试替身注入口：默认走真实 outbound.headRequest，运行时调用方无需传。 */
+export type ProbeJobDeps = { headRequest?: typeof headRequest };
+
+export async function runAssetProbeJob(db: Database, projectId: string, jobId: string, policy?: ProbePolicy, deps: ProbeJobDeps = {}): Promise<ProbeJobRunResult> {
+  const head = deps.headRequest || headRequest;
   const initial = db.getAssetProbeJob(projectId, jobId);
   if (!initial) return { ok: false, processed: 0, error: "probe job not found" };
   if (["completed", "cancelled"].includes(String(initial.status))) return { ok: true, processed: 0, job: initial };
@@ -125,7 +129,7 @@ export async function runAssetProbeJob(db: Database, projectId: string, jobId: s
       await pace();
       const started = Date.now();
       try {
-        const result = await headRequest(url, { proxy: proxyFromEnv(), timeoutMs: 8000 });
+        const result = await head(url, { proxy: proxyFromEnv(), timeoutMs: 8000 });
         const response: ProbeResponse = { status: result.status, headers: result.headers, ...(result.tls ? { tls: result.tls } : {}) };
         const responseTags = tags(response);
         const score = response.status >= 200 && response.status < 400 ? 25 : response.status === 401 || response.status === 403 ? 15 : 0;

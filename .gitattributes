@@ -1,0 +1,6 @@
+# CI 用 `git diff --exit-code generated/tool-manifest.json` 检出清单漂移：
+# Windows 上 core.autocrlf 会把 LF 转 CRLF，凭空制造一次假漂移。
+generated/tool-manifest.json text eol=lf
+
+# 容器里的启动脚本带 CRLF 会直接执行失败（/bin/sh^M: bad interpreter）。
+*.sh text eol=lf

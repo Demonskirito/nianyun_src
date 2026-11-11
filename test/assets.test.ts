@@ -48,9 +48,16 @@ describe("asset inventory", () => {
     ]);
     expect(first.accepted).toHaveLength(2);
     expect(first.rejected).toHaveLength(0);
-    expect(db.listAssets("p_src")).toHaveLength(2);
-    const assetId = String(db.listAssets("p_src")[0]?.id);
-    expect(db.listAssetObservations("p_src", assetId)).toHaveLength(2);
+    const rows = db.listAssets("p_src");
+    expect(rows).toHaveLength(2);
+    // listAssets 按 last_seen DESC 排序，最后插入的 outside 常排到 [0]；
+    // 按值定位才能稳定验证"资产去重、但每次导入都单独记一条 observation"。
+    const api = rows.find(row => String(row.value ?? row.url ?? "").includes("api.example.com"));
+    const outside = rows.find(row => String(row.value ?? row.url ?? "").includes("outside.example.net"));
+    expect(api).toBeDefined();
+    expect(outside).toBeDefined();
+    expect(db.listAssetObservations("p_src", String(api!.id))).toHaveLength(2);
+    expect(db.listAssetObservations("p_src", String(outside!.id))).toHaveLength(1);
     const map = buildAssetMap(db, "p_src") as { view?: { nodes?: Array<{ id: string; group: string }> } };
     expect(map.view?.nodes?.some((node) => node.group === "recon")).toBe(true);
   });

@@ -95,7 +95,17 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
     PIP_RETRIES=${PIP_RETRIES}
 WORKDIR /opt/nianyun
-RUN apt-get update \
+# 与 control 阶段保持一致：把 Debian 源换到阿里云镜像并开启 apt 重试。
+# 否则 tools 阶段直连 deb.debian.org（经代理约 40KB/s、35 分钟后还会在大包上 502），
+# 而 control 阶段走国内镜像是快的；这是多阶段拆分时漏掉的一处。
+RUN mkdir -p /etc/ssl/certs \
+ && node -e "require('fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('tls').rootCertificates.join('\n') + '\n')" \
+ && sed -i \
+      -e 's|http://deb.debian.org/debian-security|https://mirrors.aliyun.com/debian-security|g' \
+      -e 's|http://deb.debian.org/debian|https://mirrors.aliyun.com/debian|g' \
+      /etc/apt/sources.list.d/debian.sources \
+ && printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-retries \
+ && apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl wget git \
       python3 python3-venv python3-dev python3-pip \

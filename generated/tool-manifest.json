@@ -1,0 +1,3531 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nianyun Blackbox Tool Manifest",
+    "version": "b00866d90fa4",
+    "description": "由 scripts/gen-tool-manifest.mjs 生成。共 75 个工具（tactical 72 / strategic 2 / tactical_rpc 1）。不要手改。"
+  },
+  "components": {
+    "schemas": {
+      "ToolInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          },
+          "raw_method": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{1,20}$"
+          },
+          "headers": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 5000000
+          },
+          "body_base64": {
+            "type": "string",
+            "maxLength": 8000000
+          },
+          "json": {},
+          "form": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "multipart": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "value": {
+                  "type": "string",
+                  "maxLength": 1000000
+                },
+                "filename": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                "content_type": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                "content_base64": {
+                  "type": "string",
+                  "maxLength": 8000000
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 900000
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 900
+          },
+          "args": {
+            "maxItems": 40,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "full_page": {
+            "type": "boolean"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 300
+          },
+          "actions": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "click",
+                    "fill",
+                    "press",
+                    "select",
+                    "check",
+                    "uncheck",
+                    "hover",
+                    "wait",
+                    "scroll"
+                  ]
+                },
+                "selector": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "value": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "wait_ms": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          },
+          "evaluate": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "new_tab": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "evidence_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20000
+              }
+            }
+          },
+          "evidence_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 65536
+          },
+          "entry_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "wordlist": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "threads": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "poll",
+              "stop"
+            ]
+          },
+          "runtime_id": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "server": {
+            "type": "string",
+            "format": "uri"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "wait_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "wordlist_root": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "anonymous": {
+            "type": "boolean"
+          },
+          "force_armored": {
+            "type": "boolean"
+          },
+          "no_auth": {
+            "type": "boolean"
+          },
+          "use_jar": {
+            "type": "boolean"
+          },
+          "jwt": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "cookies": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8192
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              },
+              {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              }
+            ]
+          },
+          "cookie_jar": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8192
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              },
+              {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              }
+            ]
+          },
+          "follow_redirects": {
+            "type": "boolean"
+          },
+          "timing_threshold_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 600000
+          },
+          "bypass_auth_wall": {
+            "type": "boolean"
+          },
+          "params": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8192
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "variant": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "HEAD",
+                  "OPTIONS",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE"
+                ]
+              },
+              "headers": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 8192
+                }
+              },
+              "cookie": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "body": {
+                "type": "string",
+                "maxLength": 5000000
+              },
+              "anonymous": {
+                "type": "boolean"
+              },
+              "bypass_auth_wall": {
+                "type": "boolean"
+              },
+              "follow_redirects": {
+                "type": "boolean"
+              },
+              "use_jar": {
+                "type": "boolean"
+              },
+              "no_auth": {
+                "type": "boolean"
+              },
+              "timing_threshold_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 600000
+              }
+            },
+            "additionalProperties": false
+          },
+          "variant_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "cookie": {
+            "type": "string",
+            "maxLength": 8192
+          },
+          "pattern": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "max_matches": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8000000
+          },
+          "tool": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 200000
+          },
+          "script": {
+            "type": "string",
+            "maxLength": 200000
+          },
+          "requirements": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "timeout_s": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 900
+          },
+          "rate_limit": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 150
+          },
+          "katana_depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "katana_duration_s": {
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 300
+          },
+          "retries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "memory_mb": {
+            "type": "integer",
+            "minimum": 64,
+            "maximum": 8192
+          },
+          "network": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "resource_type": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "since_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400000
+          },
+          "include_post_data": {
+            "type": "boolean"
+          },
+          "tab": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "wait_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 60000
+          },
+          "wait_until": {
+            "type": "string",
+            "enum": [
+              "load",
+              "domcontentloaded",
+              "networkidle",
+              "commit"
+            ]
+          },
+          "wait_for_selector": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "urls": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          "seeds": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          "url_regex": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "format": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "mode": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "op": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "operation": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 8192
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "clear": {
+            "type": "boolean"
+          },
+          "reset": {
+            "type": "boolean"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "local_storage": {},
+          "session_storage": {},
+          "scope": {},
+          "via": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "provider": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "template": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "analyze": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "bcheck": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "attack_id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "audit_id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "crawl_id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "requests": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {}
+          },
+          "type": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "wait_timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 600000
+          }
+        },
+        "additionalProperties": {}
+      }
+    }
+  },
+  "x-nianyun-sources": [
+    "src/blackbox/tools.ts#BLACKBOX_TOOL_NAMES",
+    "src/blackbox/tool_docs.ts#TOOL_DOCS",
+    "src/blackbox/routing.ts#toolLayer",
+    "src/blackbox/weights.ts#toolWeight",
+    "src/blackbox/sandbox_rpc.ts#RPC_WHITELIST",
+    "src/blackbox/playbooks.ts#PLAYBOOKS"
+  ],
+  "x-nianyun-counts": {
+    "total": 75,
+    "tactical": 72,
+    "strategic": 2,
+    "tactical_rpc": 1,
+    "rpc_callable": 12
+  },
+  "x-nianyun-issues": [],
+  "x-nianyun-cli-redirects": {
+    "httpx": "recon.http_probe",
+    "ffuf": "recon.content_discovery",
+    "nuclei": "recon.nuclei",
+    "katana": "katana.crawl",
+    "sqlmap": "recon.sql",
+    "dalfox": "recon.xss",
+    "subfinder": "recon.subdomains",
+    "dnsx": "recon.dns",
+    "naabu": "recon.ports",
+    "gau": "recon.historical_urls"
+  },
+  "paths": {
+    "/tools/browser.close": {
+      "post": {
+        "operationId": "browser_close",
+        "summary": "关闭当前黑盒会话的持久浏览器；空闲 10 分钟也会自动关闭。",
+        "tags": [
+          "browser",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/browser.network": {
+      "post": {
+        "operationId": "browser_network",
+        "summary": "取当前浏览器会话在渲染期真实发出的请求（含 XHR/fetch 的 method、URL、状态码与 post_data），去重后给出可直接复测的接口清单；SPA 逆向的主力工具。",
+        "tags": [
+          "browser",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [
+            "spa_reverse"
+          ]
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/browser.open": {
+      "post": {
+        "operationId": "browser_open",
+        "summary": "使用 Playwright 打开页面并复用会话浏览器；支持 actions 点击/填表/按键与 evaluate 求值，记录状态、标题、最终 URL 和页面特征。",
+        "tags": [
+          "browser",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 2,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [
+            "spa_reverse",
+            "unauth_exposure",
+            "auth_token",
+            "graphql_ws",
+            "xss"
+          ]
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/browser.screenshot": {
+      "post": {
+        "operationId": "browser_screenshot",
+        "summary": "截取当前会话页面（可带 actions）的截图，并写入 Evidence Ledger。",
+        "tags": [
+          "browser",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/browser.storage": {
+      "post": {
+        "operationId": "browser_storage",
+        "summary": "读当前页面的 localStorage / sessionStorage / cookie（含 httpOnly 之外的可见项），登录后取 Token 的主力手段。",
+        "tags": [
+          "browser",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/browser.tab": {
+      "post": {
+        "operationId": "browser_tab",
+        "summary": "管理会话浏览器的标签页（列出/切换/新建/关闭），多身份对照时不必重开浏览器。",
+        "tags": [
+          "browser",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.bchecks": {
+      "post": {
+        "operationId": "burp_bchecks",
+        "summary": "导入 Burp BChecks 脚本化扫描检查：传 .bcheck 的 JSON 内容，返回加载状态与错误；导入后参与主动扫描。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.check": {
+      "post": {
+        "operationId": "burp_check",
+        "summary": "检查 Burp 代理是否可连接。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.collab_generate": {
+      "post": {
+        "operationId": "burp_collab_generate",
+        "summary": "生成 Burp Collaborator 域名载荷，用于 SSRF/XXE/盲注的无回显验证。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.collab_poll": {
+      "post": {
+        "operationId": "burp_collab_poll",
+        "summary": "轮询 Burp Collaborator 交互（DNS/HTTP/SMTP），作为带外交互证据。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.compare": {
+      "post": {
+        "operationId": "burp_compare",
+        "summary": "响应分析：文本 diff、关键词一致性、响应变化属性，或把两段内容送进 Burp Comparer。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.control": {
+      "post": {
+        "operationId": "burp_control",
+        "summary": "控制 Burp 本身：暂停/恢复任务引擎、导入工程或用户选项、写日志、送数据到 Decoder、关闭 Burp、卸载本扩展。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "high",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.convert": {
+      "post": {
+        "operationId": "burp_convert",
+        "summary": "Burp 编解码全家桶：base64/url/html/hex、任意摘要算法、压缩解压、随机串、进制转换、JSON 编辑、JWT 解码。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.cookies": {
+      "post": {
+        "operationId": "burp_cookies",
+        "summary": "查看或写入 Burp cookie jar（列表只返回名称/域/路径，值留在 Burp 内）。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.crawl": {
+      "post": {
+        "operationId": "burp_crawl",
+        "summary": "启动 Burp Scanner 的爬虫（可多次轮询状态），补齐纯路径爬取之外的菜单/表单关系。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "high",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.decoder": {
+      "post": {
+        "operationId": "burp_decoder",
+        "summary": "Burp Decoder 能力的编解码：base64/url/html/hex、sha256、uuid，用于处理参数与令牌。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.entry": {
+      "post": {
+        "operationId": "burp_entry",
+        "summary": "读取 history 或 Site map 返回的单条 Burp 请求/响应详情；敏感请求头和常见凭据字段会脱敏并截断。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [
+            "waf_bypass"
+          ],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.history": {
+      "post": {
+        "operationId": "burp_history",
+        "summary": "读取当前目标主机的 Burp Proxy HTTP history 条目，返回请求 ID、URL、状态和大小。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": [
+            "logic"
+          ],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.info": {
+      "post": {
+        "operationId": "burp_info",
+        "summary": "读取 Burp 版本、项目名、任务引擎状态、拦截开关与全部桥接能力清单。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.intercept": {
+      "post": {
+        "operationId": "burp_intercept",
+        "summary": "读取或关闭 Burp Proxy 拦截开关，避免操作员忘记放行时把 Agent 请求卡住。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.intruder": {
+      "post": {
+        "operationId": "burp_intruder",
+        "summary": "Intruder 等价攻击引擎：sniper/battering_ram/pitchfork/cluster_bomb，带并发、延迟、停止条件与命中过滤；另可查询/停止攻击。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "high",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.intruder_send": {
+      "post": {
+        "operationId": "burp_intruder_send",
+        "summary": "把请求送进 Burp Intruder 标签页，交给操作员手工配置载荷继续。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.issues": {
+      "post": {
+        "operationId": "burp_issues",
+        "summary": "读取当前目标主机的 Burp Scanner 问题作为候选证据；不直接视为已验证漏洞。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.options": {
+      "post": {
+        "operationId": "burp_options",
+        "summary": "导出 Burp 工程（project）或用户（user）选项 JSON，便于比对与复用配置。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.organizer": {
+      "post": {
+        "operationId": "burp_organizer",
+        "summary": "把一条请求送进 Burp Organizer，便于操作员归档与后续追踪。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.proxy_rule": {
+      "post": {
+        "operationId": "burp_proxy_rule",
+        "summary": "数据驱动的 Match and Replace：按 URL 正则匹配，改写请求/响应的头与 body、或阻断请求；同时作用于 Burp 自身发出的流量。action=list|add|update|remove|clear|test，test 为不发包的干跑预览。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "high",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.repeater": {
+      "post": {
+        "operationId": "burp_repeater",
+        "summary": "把一条请求送进 Burp Repeater 标签页，交给操作员手工重放与对比。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.request": {
+      "post": {
+        "operationId": "burp_request",
+        "summary": "通过 Burp 代理发送 HTTP 请求（支持认证头、Cookie 和请求体）并记录流量。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.scan": {
+      "post": {
+        "operationId": "burp_scan",
+        "summary": "对目标发起 Burp Scanner 审核（默认被动；主动扫描必须先在规则里开启 tools[\"burp.scan\"].allow_active_scan）。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "high",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.scan_issues": {
+      "post": {
+        "operationId": "burp_scan_issues",
+        "summary": "读取指定（或全部）审核任务产生的问题明细。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.scan_report": {
+      "post": {
+        "operationId": "burp_scan_report",
+        "summary": "按指定审核任务生成 HTML/XML 报告文件（写到 Burp 主机路径）。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.scan_status": {
+      "post": {
+        "operationId": "burp_scan_status",
+        "summary": "查询由 burp.scan 启动的审核进度与问题列表（问题仍属候选证据）。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.scan_stop": {
+      "post": {
+        "operationId": "burp_scan_stop",
+        "summary": "停止并删除指定的 Burp 审核任务，释放 Burp 资源。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.scope": {
+      "post": {
+        "operationId": "burp_scope",
+        "summary": "查询某个 URL 是否落在 Burp Target scope 内，用于发送前的范围自查。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.scope_edit": {
+      "post": {
+        "operationId": "burp_scope_edit",
+        "summary": "把 URL 或 scope 模式加入/移出 Burp Target scope。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.send": {
+      "post": {
+        "operationId": "burp_send",
+        "summary": "用 Burp 的 HTTP 栈发送一次请求（可改方法、头、体、是否跟随跳转），响应进入 Burp 与证据账本。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "waf_bypass"
+          ],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.send_batch": {
+      "post": {
+        "operationId": "burp_send_batch",
+        "summary": "用 Burp HTTP 栈并发发送一批请求（最多 50 条），一次拿到每条的状码与长度。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "waf_bypass"
+          ],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.sitemap": {
+      "post": {
+        "operationId": "burp_sitemap",
+        "summary": "读取当前目标主机的 Burp Site map 条目，返回已观察到的请求路由和响应特征。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.sitemap_add": {
+      "post": {
+        "operationId": "burp_sitemap_add",
+        "summary": "发送一次请求并把请求/响应写入 Burp Site map，供后续审计与操作员复查。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.sitemap_issues": {
+      "post": {
+        "operationId": "burp_sitemap_issues",
+        "summary": "读取 Site map 上属于当前主机的 Burp 问题（候选证据，不等于已验证漏洞）。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.storage": {
+      "post": {
+        "operationId": "burp_storage",
+        "summary": "桥接扩展的键值存储（Burp 持久化），用于跨任务保存笔记、令牌位置或字典片段。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.websocket": {
+      "post": {
+        "operationId": "burp_websocket",
+        "summary": "WebSocket 主动交互：建连（ws/wss）、发文本或二进制帧、拉取收到的帧、关闭；action=open|send|messages|close|list。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/burp.ws_history": {
+      "post": {
+        "operationId": "burp_ws_history",
+        "summary": "读取当前目标主机的 Burp Proxy WebSocket 消息（方向、载荷长度、脱敏预览）。",
+        "tags": [
+          "burp",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "bridge": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/evidence.read": {
+      "post": {
+        "operationId": "evidence_read",
+        "summary": "分页读取工具工件的完整输出（offset/limit），用于突破单条结果 2000 行的返回上限。",
+        "tags": [
+          "evidence",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/exec.bash": {
+      "post": {
+        "operationId": "exec_bash",
+        "summary": "在沙箱容器里跑 bash（strategic 层）：管道、文本处理、调本地工具链。含 naabu/nmap/subfinder/dnsx 等裸调会在解析阶段被拦（exit_code=126）。",
+        "tags": [
+          "exec",
+          "strategic"
+        ],
+        "x-nianyun": {
+          "layer": "strategic",
+          "weight": 3,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/exec.python": {
+      "post": {
+        "operationId": "exec_python",
+        "summary": "在沙箱容器里跑 Python 脚本（strategic 层）：写 POC、算签名/HMAC、解析二进制响应、批量对比。裸调被拦的 CLI 会被 preflight 拦下；网络只能经 RPC 电台。",
+        "tags": [
+          "exec",
+          "strategic"
+        ],
+        "x-nianyun": {
+          "layer": "strategic",
+          "weight": 3,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "waf_bypass",
+            "spa_reverse",
+            "sqli",
+            "cmdi",
+            "graphql_ws"
+          ]
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/fs.grep": {
+      "post": {
+        "operationId": "fs_grep",
+        "summary": "在沙箱工作区里按正则搜内容（ripgrep 语义），从大文件里捞 token、接口、报错。",
+        "tags": [
+          "fs",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/fs.list": {
+      "post": {
+        "operationId": "fs_list",
+        "summary": "列沙箱工作区目录（/state 与工作目录），确认产物、字典、POC 落在哪。",
+        "tags": [
+          "fs",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/fs.read": {
+      "post": {
+        "operationId": "fs_read",
+        "summary": "读沙箱工作区文本文件（分页），取 POC 输出、日志、下载的 JS。",
+        "tags": [
+          "fs",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/http.diff": {
+      "post": {
+        "operationId": "http_diff",
+        "summary": "对同一接口做基线/变体对照（匿名叫带凭证、参数前后、Host 前后），输出结构化差异：状态码、长度、关键字、header 变化。未授权与越权证据必须用它成对留痕。",
+        "tags": [
+          "http",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [
+            "waf_bypass",
+            "spa_reverse",
+            "unauth_exposure",
+            "auth_token",
+            "idor",
+            "sqli",
+            "cmdi",
+            "jwt_auth",
+            "logic",
+            "race_condition"
+          ]
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/http.request": {
+      "post": {
+        "operationId": "http_request",
+        "summary": "发送 GET/HEAD/POST/PUT/PATCH/DELETE 请求，支持认证头、Cookie、JSON/form/multipart 请求体。",
+        "tags": [
+          "http",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": [
+            "waf_bypass",
+            "spa_reverse",
+            "unauth_exposure",
+            "auth_token",
+            "idor",
+            "sqli",
+            "upload_rce",
+            "cmdi",
+            "ssrf",
+            "deserialization",
+            "cloud_supply",
+            "logic",
+            "race_condition",
+            "graphql_ws",
+            "xss"
+          ]
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/katana.crawl": {
+      "post": {
+        "operationId": "katana_crawl",
+        "summary": "在资源和时长限制内发现页面、路由和公开端点。",
+        "tags": [
+          "katana",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 5,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.api_routes": {
+      "post": {
+        "operationId": "recon_api_routes",
+        "summary": "接口路由发现（Kiterunner 类）：按词表探测 API 路径，命中隐藏的管理/内部接口。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "env": "KITERUNNER_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.cms": {
+      "post": {
+        "operationId": "recon_cms",
+        "summary": "CMS 指纹与已知漏洞面（WPScan 类）：版本、插件、可读配置文件。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "env": "WPSCAN_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.content_discovery": {
+      "post": {
+        "operationId": "recon_content_discovery",
+        "summary": "目录/文件爆破（ffuf 封装，带字典与状态码过滤），产出可访问路径清单。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "unauth_exposure"
+          ],
+          "env": "FFUF_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.dns": {
+      "post": {
+        "operationId": "recon_dns",
+        "summary": "解析 A/AAAA/CNAME/NS/MX/TXT，识别悬垂 CNAME（接管面）与 CDN 归属；只做 DNS 查询，不打端口。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "env": "DNSX_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.graphql": {
+      "post": {
+        "operationId": "recon_graphql",
+        "summary": "GraphQL 体检（graphql-cop 类）：introspection 是否开放、字段建议、批量查询与别名绕过限流。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "graphql_ws"
+          ],
+          "env": "GRAPHQL_COP_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.historical_urls": {
+      "post": {
+        "operationId": "recon_historical_urls",
+        "summary": "从被动源（gau/wayback 类）捞历史 URL：老接口、备份文件、已下线但仍可访问的路径。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 2,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "env": "GAU_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.http_probe": {
+      "post": {
+        "operationId": "recon_http_probe",
+        "summary": "对主机清单做存活与指纹探测（httpx 封装）：状态码、标题、server、技术栈、TLS 摘要，过滤掉死链后再进资产队列。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 2,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": [],
+          "env": "HTTPX_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.interactsh": {
+      "post": {
+        "operationId": "recon_interactsh",
+        "summary": "OAST 外带验证：生成回连域名、投放 payload、轮询 DNS/HTTP 命中，用于盲注、SSRF、XXE 的无回显确认。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "sqli",
+            "cmdi",
+            "ssrf",
+            "deserialization",
+            "xss"
+          ],
+          "env": "INTERACTSH_URL"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.js_endpoints": {
+      "post": {
+        "operationId": "recon_js_endpoints",
+        "summary": "从 JS 里抠接口、路由、硬编码 key 与云 AK（subjs/LinkFinder 类），是「文档没有但真实存在」接口的主要来源。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 2,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [
+            "spa_reverse"
+          ],
+          "env": "SUBJS_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.jwt": {
+      "post": {
+        "operationId": "recon_jwt",
+        "summary": "JWT 攻击面：alg=none、弱密钥爆破、kid 注入、JWK 头注入；用改过的 token 重放受保护接口做对照。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "jwt_auth"
+          ],
+          "env": "JWT_TOOL_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.nuclei": {
+      "post": {
+        "operationId": "recon_nuclei",
+        "summary": "模板化漏洞扫描（nuclei 封装），按标签/严重度过滤。重型工具，预算降级时会被延后。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 5,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "high",
+          "playbooks": [
+            "deserialization"
+          ],
+          "env": "NUCLEI_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.parameters": {
+      "post": {
+        "operationId": "recon_parameters",
+        "summary": "参数发现（Arjun 类）：找出接口接受但文档没写的隐藏参数，扩注入面。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 2,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "env": "ARJUN_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.ports": {
+      "post": {
+        "operationId": "recon_ports",
+        "summary": "端口扫描（naabu/masscan 封装，走控制面出口）。沙箱里裸调 naabu/nmap 会被 preflight 以 exit_code=126 拦下并指到这里。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [],
+          "env": "NAABU_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.race_condition": {
+      "post": {
+        "operationId": "recon_race_condition",
+        "summary": "竞态批量发包：沙箱把 N 个请求写进电台（/state/rpc/dispatch.jsonl, mode=concurrent），控制面在同一时刻齐发并回传每个响应，用时间窗证明竞态。",
+        "tags": [
+          "recon",
+          "tactical_rpc"
+        ],
+        "x-nianyun": {
+          "layer": "tactical_rpc",
+          "weight": 4,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "medium",
+          "playbooks": [
+            "race_condition"
+          ]
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.sast": {
+      "post": {
+        "operationId": "recon_sast",
+        "summary": "源码静态审计（Semgrep 类）：按规则集找注入、反序列化、硬编码凭证。只吃本地路径。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 5,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "env": "SEMGREP_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.scan_profile": {
+      "post": {
+        "operationId": "recon_scan_profile",
+        "summary": "查看/切换扫描档位（速率、并发、UA、超时），避免固定速率把目标打挂或触发封禁。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.secrets": {
+      "post": {
+        "operationId": "recon_secrets",
+        "summary": "本地代码/前端产物密钥扫描（TruffleHog 类）：只吃本地路径，给 URL 会被执行器直接拒绝。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [
+            "cloud_supply"
+          ],
+          "env": "TRUFFLEHOG_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.sql": {
+      "post": {
+        "operationId": "recon_sql",
+        "summary": "SQL 注入验证（sqlmap 类）：布尔/报错/延时三类判据，先手工差分再用工具放大。重型工具。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 5,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "high",
+          "playbooks": [
+            "sqli"
+          ],
+          "env": "SQLMAP_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.subdomains": {
+      "post": {
+        "operationId": "recon_subdomains",
+        "summary": "被动/主动子域枚举（subfinder 封装），产出主机名清单并写入证据；结果按根域折叠，避免同名重复。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 2,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "env": "SUBFINDER_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.tls": {
+      "post": {
+        "operationId": "recon_tls",
+        "summary": "TLS 配置体检（testssl 类）：协议/套件/证书链/到期时间，识别弱配置与过期证书造成的信任链问题。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": [],
+          "env": "TESTSSL_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.traffic_diff": {
+      "post": {
+        "operationId": "recon_traffic_diff",
+        "summary": "结构化差分探针：比两条既有响应（或同一 URL 的基线与最新），只回 diff_score 与一句结论，用来替代裸刷 burp.history 看 total 变大。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": false,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.wordlists": {
+      "post": {
+        "operationId": "recon_wordlists",
+        "summary": "列出沙箱内可用字典（路径/大小/行数），让模型自己选字典而不是猜。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 1,
+          "heavy": false,
+          "rpc_callable": true,
+          "risk": "low",
+          "playbooks": []
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    },
+    "/tools/recon.xss": {
+      "post": {
+        "operationId": "recon_xss",
+        "summary": "XSS 验证（Dalfox 类）：反射点定位 + payload 上下文适配 + 编码绕过，回显或 DOM 执行都留证。",
+        "tags": [
+          "recon",
+          "tactical"
+        ],
+        "x-nianyun": {
+          "layer": "tactical",
+          "weight": 3,
+          "heavy": true,
+          "rpc_callable": false,
+          "risk": "medium",
+          "playbooks": [
+            "xss"
+          ],
+          "env": "DALFOX_PATH"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tool-result（写入 Evidence Ledger）"
+          },
+          "409": {
+            "description": "rejected：模型可修的错，不计预算、不进失败重试"
+          }
+        }
+      }
+    }
+  }
+}

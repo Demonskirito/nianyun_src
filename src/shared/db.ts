@@ -832,8 +832,11 @@ export class Database {
     this.db.exec("BEGIN IMMEDIATE");
     try {
       // environment 描述的是沙箱/工具链可用性，不是一次运行的产物：跟着账本一起继承，fork 出来即可直接跑。
+      // blackboxSessionView 已把 environment_json 解析成 environment 并删掉原始 blob（列表/详情瘦身），
+      // 所以这里必须读解析后的 parent.environment；再读 environment_json 只会拿到 undefined，
+      // 导致 fork 出的会话丢了 ready，desk 的 run 门禁会拒绝启动。
       this.db.prepare("INSERT INTO blackbox_sessions(id,project_id,candidate_id,target,status,phase,environment_json,checkpoint_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
-        .run(id, projectId, String(parent.candidate_id), String(parent.target), "paused", "awaiting_operator", String((parent as { environment_json?: string }).environment_json || "{}"), JSON.stringify(checkpoint || {}), now, now);
+        .run(id, projectId, String(parent.candidate_id), String(parent.target), "paused", "awaiting_operator", JSON.stringify((parent.environment || {}) as Record<string, unknown>), JSON.stringify(checkpoint || {}), now, now);
       this.db.prepare("INSERT INTO blackbox_events(session_id,project_id,actor,kind,text,data_json,created_at) VALUES(?,?,?,?,?,?,?)")
         .run(id, projectId, "operator", "lifecycle", `从会话 ${sessionId} 的第 ${sourceRun} 次 run 快照 fork 出来的新会话（账本一致，证据不复制）。`,
           JSON.stringify({ forked_from: sessionId, source_run: sourceRun }), now);
