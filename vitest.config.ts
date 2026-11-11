@@ -1,4 +1,11 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig } from "vitest/config";
+
+// startSandboxService 默认在 /var/lib/nianyun-sandbox/{state,jobs} 建目录。
+// 生产容器以 root 运行没问题，但 CI runner 是非 root，直接 EACCES。
+// 测试统一指到临时目录；生产路径由 compose / SANDBOX_* 环境变量决定，不受影响。
+const sandboxTestRoot = join(tmpdir(), "nianyun-sandbox-test");
 
 export default defineConfig({
   esbuild: { jsx: "automatic" },
@@ -17,6 +24,8 @@ export default defineConfig({
     env: {
       HTTP_PROXY: "", HTTPS_PROXY: "", http_proxy: "", https_proxy: "",
       ALL_PROXY: "", all_proxy: "", NO_PROXY: "", no_proxy: "",
+      SANDBOX_STATE_ROOT: join(sandboxTestRoot, "state"),
+      SANDBOX_JOBS_DIR: join(sandboxTestRoot, "jobs"),
     },
   },
   ssr: { external: ["node:sqlite", "sqlite"] },
