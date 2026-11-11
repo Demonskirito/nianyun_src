@@ -17,6 +17,7 @@ on:
       - "deploy/**"
       - "package.json"
       - "package-lock.json"
+      - "vitest.config.ts"
       - "compose.yaml"
       - "compose.control.yaml"
       - ".github/workflows/image.yml"
@@ -65,8 +66,8 @@ jobs:
     # nianyun:control 工具镜像；干净 CI 里既没有这个本地镜像、仓库也还没发布过 GHCR 包，
     # 所以不能随 push 自动跑（否则 typecheck 一变绿、这个 job 就必然失败）。
     # 可复现的全量构建由 build-full 在 schedule / workflow_dispatch 覆盖；
-    # 手动触发本 job 时可用 fast_base_image 指向已发布的 base。
-    if: github.event_name == 'workflow_dispatch'
+    # 只有手动触发且明确给出已发布 base 时才跑，否则 CI 里必然拉不到镜像。
+    if: github.event_name == 'workflow_dispatch' && inputs.fast_base_image != ''
     runs-on: ubuntu-latest
     needs: typecheck-and-test
     steps:
