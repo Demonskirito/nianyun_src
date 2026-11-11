@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "budgets": {
+    "time_sec": 5400,
+    "wall_clock_sec": 14400,
+    "tool_calls": 600,
+    "agent_turns": 120,
+    "tokens": 0,
+    "cost": 25,
+    "retries": 12
+  },
+  "tool_weights": {
+    "recon.nuclei": 4,
+    "recon.sql": 4,
+    "katana.crawl": 4,
+    "recon.content_discovery": 2,
+    "recon.xss": 2,
+    "recon.api_routes": 2,
+    "recon.ports": 2,
+    "recon.secrets": 2,
+    "recon.sast": 3,
+    "burp.scan": 3,
+    "burp.crawl": 2,
+    "burp.intruder": 3,
+    "burp.send_batch": 2
+  },
+  "loop_control": {
+    "task_retry_limit": 3,
+    "repeat_limit": 3,
+    "stall_batch_limit": 6,
+    "stage_timeout_sec": 1800,
+    "stage_rollover_limit": 12,
+    "param_stall_calls": 40,
+    "param_stall_queries": 12,
+    "param_stall_variants": 12,
+    "param_stall_ratio": 25,
+    "advice_pending_limit": 10
+  },
+  "request": {
+    "methods": ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"],
+    "max_redirects": 10,
+    "max_timeout_ms": 180000,
+    "max_body_bytes": 2097152,
+    "max_request_body_bytes": 10485760,
+    "max_output_bytes": 8388608
+  },
+  "auth_wall": {
+    "streak_limit": 10,
+    "codes": ["10403", "10401", "10402", "401"],
+    "safe_paths": [
+      ".env", ".git/", ".svn/", ".DS_Store", "/WEB-INF", "/META-INF",
+      "/swagger", "/swagger-resources", "/swagger-ui", "/v1/api-docs", "/v2/api-docs", "/v3/api-docs",
+      "/openapi", "/api-docs", "/api/swagger", "/doc.html", "/webjars",
+      "/actuator", "/env", "/heapdump", "/trace", "/jolokia", "/prometheus", "/metrics",
+      "/druid", "/nacos", "/eureka", "/consul", "/grafana", "/kibana", "/elasticsearch", "/solr",
+      "/console", "/jenkins", "/server-status", "/phpinfo", "/phpmyadmin", "/adminer",
+      "/debug", "/debug/pprof", "/health", "/graphql", "/robots.txt", "/sitemap.xml", "/.well-known",
+      "/backup", "/db.sql", "/config.json", "/application.yml", "/application.properties"
+    ],
+    "allow_unauth_playbook": true,
+    "allow_bypass": true
+  },
+  "tools": {
+    "recon.nuclei": {},
+    "recon.sql": {},
+    "recon.content_discovery": {},
+    "recon.xss": {},
+    "recon.cms": {},
+    "recon.ports": {},
+    "recon.parameters": {},
+    "recon.js_endpoints": {},
+    "recon.tls": {},
+    "recon.api_routes": {},
+    "recon.jwt": {},
+    "recon.graphql": {},
+    "recon.secrets": {},
+    "recon.sast": {},
+    "recon.interactsh": {},
+    "burp.scan": { "allow_active_scan": true }
+  },
+  "evidence": { "require_ids": true, "save_raw_results": true },
+  "report": { "require_task_outcomes": true, "distinguish_incomplete": true },
+  "text": {
+    "任务与预算": "按资产规模拆分任务；持续执行直到必需任务完成、预算耗尽或安全停止。预算是用来榨干攻击面的，不是用来提前收尾的：只要还有未验证的高价值假设和剩余预算，就不写结束语。",
+    "重复与停滞": "相同目标和参数且没有新信息的动作不重复；停滞时更换打法，而不是重试同一条请求。注意「响应形状不变」不等于「没有新信息」：盲注、越权遍历、状态机试探的信息在耗时维度、状态码差异和后续副作用里，不在响应体里——这类任务应当继续推进，用 http.diff 的 timing_delta / same_shape 判定，而不是因为 body 相似就换目标。",
+    "授权与请求": "目标均在授权范围内；GET/HEAD/POST/PUT/PATCH/DELETE 全部可用，写操作在 reason 写明预期影响并只做一次，优先可逆动作。验证完成后如需在同一端点上做补充变体（不同身份、不同方法、不同参数语义），新建一个任务 id 再打，不要复用已 completed 的任务 id。",
+    "速率与并发": "工具按批次顺序执行；遇到 429/503 先降速再换打法；不为了消耗预算制造无价值请求。需要真正的并发窗口时用 burp.send_batch 或 recon.race_condition，串行循环不算竞态。",
+    "漏洞检测与验证": "先立可证伪假设再选工具。扫描器命中只作线索；确认需要可复现的请求与响应、证据 ID 和排除误报的依据，无回显一律走带外验证。扫描器 0 命中只说明「这组模板/字典没有命中」，不说明目标没有该漏洞：换模板 tag、换字典、换打法，而不是不再用它。",
+    "证据与发现": "发现必须引用该目标成功的工具结果和证据 ID，并区分 confirmed/likely/unconfirmed。同一端点可以有多个发现（读越权、写越权、信息泄露各算一条），各自引用各自那次成功响应。",
+    "主 Agent 与 Observer": "主 Agent 推进任务并维护证据账本；Observer 只读审阅、提出补证建议，并可在证据充分时把发现置为 confirmed 或 rejected。Observer 的建议不是命令，但必须在 advice_decisions 里给出采纳或拒绝的理由。",
+    "完成判定": "completed 只有在 playbook 的 confirm.evidence 全部拿到时才成立。这里的「拿到」包括负向结论：如果一组探测一致地证明该入口鉴权正确（固定 401/403/10403、匿名与带凭证响应同构、无数据泄漏），把结论写成 completed + outcome_reason 说明「已验证无该问题」，这是可交付的结果，不是失败。反过来，只发过一个被拒请求就写 completed 会被调度器拒绝并转为 blocked（outcome_reason=blocked_by_auth）。要区分这两种情况：全任务只有一个 401 是 blocked；一组对照实验证明不存在该漏洞是 verified-negative。",
+    "鉴权墙": "同一主机连续多个不同入口返回同一鉴权码即判定鉴权墙：停止遍历被拒前缀，改找登录/Token（jwt_auth）或未授权入口（unauth_exposure）。墙生效期间同前缀的无凭证请求会被执行器直接拦下（auth_wall_requires_token）。**例外**：unauth_exposure / jwt_auth 打法的任务、命中敏感路径字典（.env/.git/swagger/actuator/druid/nacos/graphql 等）的请求、以及显式标注 input.bypass_auth_wall=true 的请求仍然放行。这些放行通道里的探测本身不累加墙计数——它们是绕墙的正路，不是撞墙。",
+    "预算与降级": "预算是两类：time_sec 只算调度时间（思考与决策），工具执行单独计时并受 wall_clock_sec 墙钟上限约束；工具调用按权重计费（http.request=1，扫描类 2–3，nuclei/sqlmap/katana=4）。当剩余墙钟已经放不下一个重型步骤时，本批重型工具会被延后（budget_degraded），先做轻量步骤；剩余墙钟重新充足后重型步骤照常可用，不存在「本场禁用」。降级期间用 http.diff 的 timing_delta、结构化 diff、OAST 回连取证；不要因为一次 budget_degraded 就永久放弃 sqlmap/nuclei 这类确认手段。",
+    "工具与执行": "所有已注册工具都可直接调用，没有逐动作人工审批，也没有整体禁用某个工具的总开关。工具报「未配置」是环境问题，换等价的工具（例如 nuclei 无模板时用 http.request 手工验证 CVE 路径），不要反复重试同一条调用。",
+    "验收与报告": "报告区分已完成、失败、受阻和未执行；未完成的任务不得表述为已验证安全。verified-negative 的任务在报告里要写出「验证过什么、用什么证据排除了什么」，与 confirmed 发现同样有价值。",
+    "JSON 输出协议": "输出必须符合主 Agent / Observer 的 JSON 协议。字段一旦写错整轮会被丢弃，所以宁可少写字段也不要写错类型。"
+  }
+}

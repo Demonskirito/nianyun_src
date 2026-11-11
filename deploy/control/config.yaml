@@ -1,0 +1,8 @@
+# Minimal control-plane configuration for SRC asset discovery and blackbox sessions.
+# Network execution stays disabled until the operator explicitly switches mode.
+execution:
+  mode: serve
+
+paths:
+  data_dir: /opt/nianyun/data
+  tools_env: /opt/nianyun/data/config/tools.env.yaml

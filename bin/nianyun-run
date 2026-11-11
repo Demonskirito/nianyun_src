@@ -1,0 +1,37 @@
+#!/bin/bash
+# Run a built TS entry (relative to repo dist/...). Missing dist → 127.
+# Clear inherited host proxies before Node and its dependencies initialize. A deployment that
+# must reach internet-only APIs (FOFA) sets NIANYUN_KEEP_PROXY=1 and keeps internal service
+# names in NO_PROXY, so container-to-container calls stay direct.
+if [[ "${NIANYUN_KEEP_PROXY:-0}" != "1" ]]; then
+  export HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= FTP_PROXY=
+  export http_proxy= https_proxy= all_proxy= ftp_proxy=
+  export NO_PROXY="*" no_proxy="*"
+fi
+HERE="$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+ROOT="$(CDPATH= cd -- "$HERE/.." && pwd)"
+export NIANYUN_REPO_ROOT="${NIANYUN_REPO_ROOT:-$ROOT}"
+REL="${1:?usage: nianyun-run dist/path.js [args]}"
+shift
+MAIN="$ROOT/$REL"
+if [[ ! -f "$MAIN" ]]; then
+  echo "nianyun-run: missing $MAIN (npm run build)" >&2
+  exit 127
+fi
+_pick_node() {
+  if [[ -n "${NIANYUN_NODE:-}" ]]; then printf '%s\n' "${NIANYUN_NODE}"; return; fi
+  command -v node
+}
+NODE="$(_pick_node)"
+if [[ -z "${NODE}" ]]; then
+  echo "nianyun-run: node not found (requires Node >= 22.19)" >&2
+  exit 127
+fi
+NODE_VERSION="$("${NODE}" -p 'process.versions.node' 2>/dev/null || true)"
+NODE_MAJOR="${NODE_VERSION%%.*}"
+NODE_MINOR="${NODE_VERSION#*.}"; NODE_MINOR="${NODE_MINOR%%.*}"
+if [[ -z "${NODE_MAJOR}" ]] || [[ "${NODE_MAJOR}" -lt 22 ]] || { [[ "${NODE_MAJOR}" -eq 22 ]] && [[ "${NODE_MINOR}" -lt 19 ]]; }; then
+  echo "nianyun-run: Node ${NODE_VERSION:-unknown} is too old; requires >= 22.19 (node:sqlite)" >&2
+  exit 127
+fi
+exec "${NODE}" "${MAIN}" "$@"

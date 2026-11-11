@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Sandbox Service 启动器（可信组件）。
+#
+# 需要：
+#   SANDBOX_TOKEN            调用方鉴权（必需；本地调试可用 SANDBOX_ALLOW_ANON=true）
+#   SANDBOX_UPSTREAM_PROXY   上游 MITM（通常就是 BURP_PROXY_URL），job 的所有出站都走它
+#   SANDBOX_NETWORK          job 容器挂的网络；配合 `--internal` 网络 = 只能连本服务
+#   SANDBOX_IMAGE            job 镜像（deploy/sandbox/Dockerfile.job 构建出来的）
+#   SANDBOX_RUNTIME=runsc    有 gVisor 时切 microVM 级隔离
+HERE="$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+exec node "$HERE/../dist/sandbox/server.js" "$@"

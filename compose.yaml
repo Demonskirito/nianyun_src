@@ -1,0 +1,132 @@
+name: nianyun
+services:
+  nianyun:
+    build:
+      context: .
+      dockerfile: deploy/control/Dockerfile
+    image: ${NIANYUN_IMAGE:-ghcr.io/Demonskirito/nianyun:latest}
+    platform: linux/amd64
+    init: true
+    ports:
+      - "${NIANYUN_BIND:-127.0.0.1}:${NIANYUN_PORT:-8700}:8700"
+    volumes:
+      - nianyun-data:/opt/nianyun/data
+    shm_size: 1gb
+    environment:
+      NIANYUN_MODE: ${NIANYUN_MODE:-serve}
+      ARL_URL: ${ARL_URL:-http://arl-web:5003}
+      ARL_TOKEN: ${ARL_TOKEN:-nianyun-local-arl-key}
+      BLACKBOX_AGENT_BASE_URL: ${BLACKBOX_AGENT_BASE_URL:-}
+      BLACKBOX_AGENT_MODEL: ${BLACKBOX_AGENT_MODEL:-}
+      BLACKBOX_AGENT_API_KEY: ${BLACKBOX_AGENT_API_KEY:-}
+      ASSET_AGENT_BASE_URL: ${ASSET_AGENT_BASE_URL:-}
+      ASSET_AGENT_MODEL: ${ASSET_AGENT_MODEL:-}
+      ASSET_AGENT_API_KEY: ${ASSET_AGENT_API_KEY:-}
+      BURP_PROXY_URL: ${BURP_PROXY_URL:-http://host.docker.internal:8080}
+      BURP_BRIDGE_URL: ${BURP_BRIDGE_URL:-http://host.docker.internal:8765}
+      BURP_BRIDGE_TOKEN: ${BURP_BRIDGE_TOKEN:-}
+      INTERACTSH_URL: ${INTERACTSH_URL:-https://oast.pro}
+      INTERACTSH_CLIENT_PATH: ${INTERACTSH_CLIENT_PATH:-/usr/local/bin/interactsh-client}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      arl-web:
+        condition: service_started
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8700/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 30s
+    restart: unless-stopped
+  arl-web:
+    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all}
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      arl-mongodb:
+        condition: service_started
+      arl-rabbitmq:
+        condition: service_started
+    ports:
+      - "${ARL_BIND:-127.0.0.1}:${ARL_PORT:-5003}:443"
+    volumes:
+      - ./deploy/arl/config-docker.yaml:/opt/arl/config-docker.yaml:ro
+      - ./deploy/arl/entrypoint.sh:/opt/arl-entrypoint.sh:ro
+      - arl-image:/code/app/tmp_screenshot
+      - arl-poc:/opt/ARL-NPoC/xing/plugins/upload_poc
+    entrypoint: ["/opt/arl-entrypoint.sh"]
+    environment:
+      ARL_ROLE: web
+      ARL_API_KEY: ${ARL_TOKEN:-nianyun-local-arl-key}
+      LANG: en_US.UTF-8
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; s=socket.create_connection(('127.0.0.1',5003),3); s.close()"]
+      interval: 20s
+      timeout: 5s
+      start_period: 45s
+      retries: 5
+  arl-worker:
+    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all}
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      arl-mongodb:
+        condition: service_started
+      arl-rabbitmq:
+        condition: service_started
+    volumes:
+      - ./deploy/arl/config-docker.yaml:/opt/arl/config-docker.yaml:ro
+      - ./deploy/arl/entrypoint.sh:/opt/arl-entrypoint.sh:ro
+      - arl-image:/code/app/tmp_screenshot
+      - arl-poc:/opt/ARL-NPoC/xing/plugins/upload_poc
+    entrypoint: ["/opt/arl-entrypoint.sh"]
+    environment:
+      ARL_ROLE: worker
+      ARL_API_KEY: ${ARL_TOKEN:-nianyun-local-arl-key}
+      LANG: en_US.UTF-8
+      TZ: Asia/Shanghai
+  arl-scheduler:
+    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all}
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      arl-mongodb:
+        condition: service_started
+      arl-rabbitmq:
+        condition: service_started
+    volumes:
+      - ./deploy/arl/config-docker.yaml:/opt/arl/config-docker.yaml:ro
+      - ./deploy/arl/entrypoint.sh:/opt/arl-entrypoint.sh:ro
+    entrypoint: ["/opt/arl-entrypoint.sh"]
+    environment:
+      ARL_ROLE: scheduler
+      ARL_API_KEY: ${ARL_TOKEN:-nianyun-local-arl-key}
+      LANG: en_US.UTF-8
+      TZ: Asia/Shanghai
+  arl-mongodb:
+    image: mongo:4.0.27
+    platform: linux/amd64
+    restart: unless-stopped
+    volumes:
+      - arl-db:/data/db
+      - ./deploy/arl/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    environment:
+      MONGO_INITDB_DATABASE: arl
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme-mongo-root}
+  arl-rabbitmq:
+    image: rabbitmq:3.13.1-management-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme-rabbitmq}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-arl}
+      RABBITMQ_DEFAULT_VHOST: arlv2host
+volumes:
+  nianyun-data:
+  arl-db:
+  arl-image:
+  arl-poc:

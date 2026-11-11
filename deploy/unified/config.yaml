@@ -1,0 +1,7 @@
+# Unified control image: console, asset pipeline, and blackbox sessions.
+execution:
+  mode: serve
+
+paths:
+  data_dir: /opt/nianyun/data
+  tools_env: /opt/nianyun/data/config/tools.env.yaml

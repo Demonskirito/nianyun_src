@@ -1,0 +1,6 @@
+{
+  "name": "nianyun-sandbox-service",
+  "private": true,
+  "type": "module",
+  "description": "Sidecar sandbox service: runs untrusted POC code in disposable containers/microVMs with MITM-forced egress."
+}

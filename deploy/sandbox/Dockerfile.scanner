@@ -1,0 +1,51 @@
+# Scanner job 镜像：在极简 job 镜像上补齐"能在沙箱里自己动手"的能力。
+#
+# 二进制全部从控制面镜像里取（同一批已验证过的构建），不额外联网下载：
+#   nuclei / katana / ffuf / httpx / dalfox / subfinder / dnsx / naabu / gau / sqlmap
+# 只读资料（字典 + nuclei 模板）一起烤进来，job 里可直接引用绝对路径：
+#   /opt/nianyun/resources/wordlists、/opt/nianyun/data/nuclei-templates
+#
+# 注意：能力补齐 ≠ 放开高危动作。--os-shell/--sql-shell/--eval/--code 仍在工具层永久禁用，
+# --os-cmd/--sql-query/--file-read/--file-write 需要 BLACKBOX_ALLOW_INTERACTIVE_EXEC=true。
+ARG JOB_IMAGE=nianyun:sandbox
+FROM ${JOB_IMAGE}
+
+USER root
+
+# sqlmap 的 shebang 是 /usr/bin/python3，python:*-slim 只有 /usr/local/bin/python3。
+RUN ln -sf /usr/local/bin/python3 /usr/bin/python3
+
+COPY --from=nianyun:control /usr/local/bin/nuclei /usr/local/bin/nuclei
+COPY --from=nianyun:control /usr/local/bin/katana /usr/local/bin/katana
+COPY --from=nianyun:control /usr/local/bin/ffuf /usr/local/bin/ffuf
+COPY --from=nianyun:control /usr/local/bin/httpx /usr/local/bin/httpx
+COPY --from=nianyun:control /usr/local/bin/dalfox /usr/local/bin/dalfox
+COPY --from=nianyun:control /usr/local/bin/subfinder /usr/local/bin/subfinder
+COPY --from=nianyun:control /usr/local/bin/dnsx /usr/local/bin/dnsx
+COPY --from=nianyun:control /usr/local/bin/naabu /usr/local/bin/naabu
+COPY --from=nianyun:control /usr/local/bin/gau /usr/local/bin/gau
+COPY --from=nianyun:control /usr/share/sqlmap /usr/share/sqlmap
+
+# sqlmap：/usr/local/bin/sqlmap 是 sqlmap.py 本体（shebang /usr/bin/python3，模块在同级 lib/），
+# 单独拷过来会丢 sys.path 报 "wrong installation detected"；改成从 /usr/share/sqlmap 起。
+RUN printf '#!/bin/sh\nexec /usr/local/bin/python3 /usr/share/sqlmap/sqlmap.py "$@"\n' > /usr/local/bin/sqlmap
+
+# 字典只有 32K，直接烤进来；nuclei 模板 ~102M 且随更新变化，走只读卷挂载
+# （SANDBOX_MOUNTS=nianyun-sandbox-templates:/opt/nianyun/data/nuclei-templates:ro）。
+COPY --from=nianyun:control /opt/nianyun/resources/wordlists /opt/nianyun/resources/wordlists
+
+# TLS 兜底：MITM 环境下 Burp 自签证书会让 requests/urllib 全部报证书错误。
+COPY sitecustomize.py /opt/sandbox/sitecustomize.py
+
+RUN chmod 0755 /usr/local/bin/nuclei /usr/local/bin/katana /usr/local/bin/ffuf /usr/local/bin/httpx \
+      /usr/local/bin/dalfox /usr/local/bin/subfinder /usr/local/bin/dnsx /usr/local/bin/naabu \
+      /usr/local/bin/gau /usr/local/bin/sqlmap \
+ && chmod -R a+rX /usr/share/sqlmap /opt/nianyun/resources
+
+USER sandbox
+WORKDIR /work
+ENV PYTHONPATH=/opt/sandbox \
+    NUCLEI_TEMPLATES_PATH=/opt/nianyun/data/nuclei-templates \
+    NIANYUN_WORDLIST_ROOT=/opt/nianyun/resources/wordlists \
+    PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+ENTRYPOINT []

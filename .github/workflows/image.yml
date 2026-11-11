@@ -1,0 +1,95 @@
+name: image
+
+# 镜像守卫：任何合并进主干的改动，都必须在**干净的 Docker 环境**里从 Dockerfile 构建成功。
+# 本地这台机器因为基础镜像有 480 层触发 overlay 的 "mount options is too long"，
+# 只能走 docker commit / cp；CI 里没有这个包袱，所以把"真构建"放在这里兜底。
+#
+# 两个 job：
+#   build-fast  —— deploy/control/Dockerfile.fast（日常代码镜像，跑 --no-cache 证明可复现）
+#   build-full  —— deploy/control/Dockerfile（工具链全量，手动或每周触发，防止 PD 版本/校验和腐坏）
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "console/**"
+      - "deploy/**"
+      - "package.json"
+      - "package-lock.json"
+      - "compose.yaml"
+      - "compose.control.yaml"
+      - ".github/workflows/image.yml"
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "package-lock.json"
+  schedule:
+    - cron: "0 3 * * 1"        # 每周一 03:00 UTC 全量构建一次
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: "npm" }
+      - run: npm ci
+      - run: npx tsc -p tsconfig.json --noEmit
+      - run: npm run build
+      - name: 工具清单必须与 dist 对齐（否则镜像里少工具）
+        run: node scripts/gen-tool-manifest.mjs && git diff --exit-code generated/tool-manifest.json
+      - run: npx vitest run --reporter=basic
+
+  build-fast:
+    runs-on: ubuntu-latest
+    needs: typecheck-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: 从零构建（--no-cache，证明 Dockerfile 自洽）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/control/Dockerfile.fast
+          pull: true
+          no-cache: true
+          push: false
+          tags: nianyun:control-ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: 冒烟：镜像能起、/health 通、四个协议模块在
+        run: |
+          docker run -d --name smoke -e NIANYUN_MODE=serve -p 18700:8700 nianyun:control-ci
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18700/health > /dev/null; then ok=1; break; fi
+            sleep 3
+          done
+          test "${ok:-0}" = "1" || { docker logs smoke | tail -50; exit 1; }
+          docker exec smoke sh -c 'ls /opt/nianyun/dist/blackbox/sovereignty.js /opt/nianyun/dist/blackbox/spa.js /opt/nianyun/dist/blackbox/replay_protocols.js /opt/nianyun/dist/blackbox/validation-envelope.js'
+          docker rm -f smoke
+
+  build-full:
+    # 工具链全量构建：会下载 httpx/nuclei/… 并校验 SHA256，慢，按需触发
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    needs: typecheck-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/control/Dockerfile
+          pull: true
+          no-cache: true
+          push: false
+          tags: nianyun:control-full-ci
+      - name: 冒烟：扫描器都在 PATH 上
+        run: |
+          docker run --rm --entrypoint sh nianyun:control-full-ci -c 'for t in httpx katana nuclei subfinder dnsx naabu gau ffuf; do command -v $t || exit 1; done'

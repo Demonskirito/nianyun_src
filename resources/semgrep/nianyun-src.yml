@@ -1,0 +1,108 @@
+# Nianyun 内置 Semgrep 规则集（离线）
+#
+# 为什么内置：`semgrep --config auto` 必须回连 semgrep.dev 拉注册表规则，控制面容器里所有出站
+# 都走 Burp / 代理，注册表请求不返回、也没有报错——scan 会一直挂着直到超时，`--version` 也一样
+# （实测容器内 `semgrep --version` >60s 不返回，关掉版本检查/指标后 1.1s）。
+# 所以 recon.sast 改用这份随镜像分发的本地规则，加上 SEMGREP_ENABLE_VERSION_CHECK=0 +
+# SEMGREP_SEND_METRICS=off，整条链路不碰网络。
+#
+# 取舍：规则少而准 > 规则多而吵。这里只保留"人工复核成本低、误报可控"的几类；要更全的规则库，
+# 把 SEMGREP_RULES_PATH 指向自备目录（p/ 系列规则可离线 clone 后放进去）。
+rules:
+  - id: nianyun-js-command-injection
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      外部可控字符串被拼进 child_process 执行函数，可导致命令注入。先确认 $CMD 是否含用户输入，
+      再用参数数组（execFile/spawn + args 数组）替代字符串拼接。
+    patterns:
+      - pattern-either:
+          - pattern: $CP.exec($CMD, ...)
+          - pattern: $CP.execSync($CMD, ...)
+          - pattern: $CP.spawn($CMD, ...)
+      - metavariable-pattern:
+          metavariable: $CMD
+          patterns:
+            - pattern-either:
+                - pattern: $A + $B
+                - pattern: "`...${...}...`"
+
+  - id: nianyun-js-sql-concat
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      SQL 语句由字符串拼接/模板串构成，存在注入风险。改用参数化查询（占位符 + 参数数组）。
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query($SQL, ...)
+          - pattern: $DB.execute($SQL, ...)
+          - pattern: $DB.raw($SQL, ...)
+      - metavariable-pattern:
+          metavariable: $SQL
+          patterns:
+            - pattern-either:
+                - pattern: $A + $B
+                - pattern: "`...${...}...`"
+
+  - id: nianyun-js-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: eval / new Function 执行动态字符串，可导致任意代码执行。确认输入来源。
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+
+  - id: nianyun-tls-verify-disabled
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: 显式关闭了 TLS 证书校验，会让中间人攻击成立。不要关校验，改为信任自签 CA。
+    patterns:
+      - pattern-either:
+          - pattern: "rejectUnauthorized: false"
+          - pattern: 'process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"'
+
+  - id: nianyun-js-path-traversal
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >-
+      把请求参数直接交给文件读取/发送接口，可能路径穿越。先做 resolve + 前缀校验，
+      或只允许白名单文件名。
+    patterns:
+      - pattern-either:
+          - pattern: $RES.sendFile($REQ.params.$K, ...)
+          - pattern: $RES.sendFile($REQ.query.$K, ...)
+          - pattern: fs.readFileSync($REQ.params.$K, ...)
+          - pattern: fs.createReadStream($REQ.query.$K, ...)
+
+  - id: nianyun-hardcoded-secret
+    languages: [javascript, typescript, python]
+    severity: WARNING
+    message: 变量名像凭证且赋值是长字面量，可能是硬编码密钥。核对是否真实凭证。
+    patterns:
+      - pattern: $KEY = "$VALUE"
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: (?i).*(password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key).*
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: ^[A-Za-z0-9_\-+/=]{16,}$
+
+  - id: nianyun-python-shell-true
+    languages: [python]
+    severity: ERROR
+    message: subprocess 开了 shell=True（或直接用 os.system），拼接外部输入即为命令注入。
+    pattern-either:
+      - pattern: subprocess.$FN(..., shell=True, ...)
+      - pattern: os.system(...)
+
+  - id: nianyun-python-unsafe-deserialization
+    languages: [python]
+    severity: ERROR
+    message: pickle / yaml.load 反序列化不可信数据可导致代码执行。改用 JSON 或 SafeLoader。
+    patterns:
+      - pattern-either:
+          - pattern: pickle.loads(...)
+          - pattern: yaml.load($X)
+      - pattern-not: yaml.load($X, Loader=yaml.SafeLoader)
+      - pattern-not: yaml.load($X, Loader=yaml.CSafeLoader)

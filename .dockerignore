@@ -1,0 +1,73 @@
+# Exclude local toolkit leftovers and generated build outputs.
+tools/c2
+tools/proxy
+dist
+console/spa
+# dist-overlay 部署需要把构建好的控制台产物打进镜像：它必须留在 context 里
+!console/spa
+!console/spa/**
+!dist
+!dist/**
+!nianyun-dist.tar
+**/*.exe
+data
+.git
+test
+tests
+.env
+**/.env
+**/__pycache__
+**/node_modules
+**/*.pyc
+.venv
+venv
+docs/superpowers
+tsecbench
+hosted/**/dist
+deploy/**/dist
+workspaces/**/*.bak
+tools/wordlists/*
+!tools/wordlists/paths.txt
+!tools/wordlists/usernames.txt
+!tools/wordlists/passwords.txt
+!tools/wordlists/lfi.txt
+!tools/wordlists/sqli.txt
+
+resources/wordlists/*
+!resources/wordlists/paths.txt
+!resources/wordlists/usernames.txt
+!resources/wordlists/passwords.txt
+!resources/wordlists/lfi.txt
+!resources/wordlists/sqli.txt
+!resources/wordlists/README.md
+
+# Compatibility paths are generated inside the image.
+/tools
+/entrypoints
+/workspaces
+/deploy/install
+
+# Never send local credentials or backups into the build context.
+/config*.yaml
+!/config.example.yaml
+**/tools.env.yaml
+**/*.ovpn
+**/*.pem
+**/*.key
+.env.*
+!.env.example
+**/*.sfdisk
+nianyun-backup*/
+
+# Local scratch and captured target artifacts. These are gitignored but were
+# still being sent into every docker build context (~1.1GB); none are needed
+# to build the image. Keep this list in sync with .gitignore.
+.tmp-*
+.layer-out/
+.tmp-probe/
+h02tmp/
+h04tmp/
+workspace/
+reports/
+.workbuddy/
+integrations/**/target/

@@ -1,0 +1,79 @@
+CELERY:
+  BROKER_URL: "amqp://arl:arlpassword@arl-rabbitmq:5672/arlv2host"
+MONGO:
+  URI: "mongodb://admin:admin@arl-mongodb:27017/"
+  DB: "arl"
+GEOIP:
+  CITY: "/data/GeoLite2/GeoLite2-City.mmdb"
+  ASN: "/data/GeoLite2/GeoLite2-ASN.mmdb"
+FOFA:
+  URL: "https://fofa.info"
+  EMAIL: ""
+  KEY: ""
+  MAX_PAGE: 0
+  PAGE_SIZE: 0
+QUERY_PLUGIN:
+  alienvault:
+    enable: true
+  certspotter:
+    after_id: 1
+    max_page: 3
+    enable: true
+  crtsh:
+    enable: true
+  fofa:
+    enable: false
+  rapiddns:
+    enable: true
+  hunter_qax:
+    enable: false
+  passivetotal:
+    enable: false
+  quake_360:
+    enable: false
+  securitytrails:
+    enable: false
+  virustotal:
+    enable: false
+  zoomeye:
+    enable: false
+  chaos:
+    enable: false
+DINGDING:
+  SECRET: ""
+  ACCESS_TOKEN: ""
+EMAIL:
+  HOST: ""
+  PORT: ""
+  USERNAME: ""
+  PASSWORD: ""
+  TO: ""
+FEISHU:
+  WEBHOOK_URL: ""
+  SECRET: ""
+WXWORK:
+  WEBHOOK_URL: ""
+GITHUB:
+  TOKEN: ""
+PROXY:
+  HTTP_URL: ""
+WEBHOOK:
+  URL: ""
+  TOKEN: ""
+ARL:
+  AUTH: true
+  API_KEY: "__ARL_API_KEY__"
+  BLACK_IPS:
+    - 127.0.0.0/8
+    - 0.0.0.0/8
+    - 172.16.0.0/12
+    - 100.64.0.0/10
+  FORBIDDEN_DOMAINS:
+    - edu.cn
+    - org.cn
+    - gov.cn
+  PORT_TOP_10: "80,443,8443,8080,8081,8888,8089,5000,5001,8085,800,81,9000,88,8001,8090"
+  DOMAIN_DICT: "/code/app/dicts/domain_2w.txt"
+  FILE_LEAK_DICT: "/code/app/dicts/file_top_2000.txt"
+  DOMAIN_BRUTE_CONCURRENT: 300
+  ALT_DNS_CONCURRENT: 1500

@@ -1,0 +1,12 @@
+# Copy to config.yaml. Never commit secrets.
+#
+# Execution modes:
+#   serve   - console + configuration; network actions are refused
+#   execute - enable asset discovery, probing, review and blackbox tool execution
+#   inspect - print the resolved mode and exit
+execution:
+  mode: serve
+
+paths:
+  data_dir: data
+  tools_env: tools.env.yaml

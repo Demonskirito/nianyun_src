@@ -1,0 +1,54 @@
+# dist-overlay 镜像：代码改动的**唯一**部署路径（替代 docker cp 热拷贝）
+#
+# 为什么需要它
+# ------------
+# Dockerfile.fast 的 build 阶段要 `npm ci`，那需要出网；本机的 Docker Desktop 代理
+# (app settings HTTPS proxy → 10.100.100.99:7897) 已经死了，于是任何 `FROM <远程镜像>`
+# 或 `npm ci` 都会失败（apt 报 exit 100，registry 报 dial tcp ... refuesd）。
+# 之前为了绕开它，一直用 `docker cp dist` + `docker restart` —— 那是"本地能跑就行"的妥协：
+#   ① 容器状态无法复现（镜像里还是旧代码，重启一次就回退）；
+#   ② 没人记得最后一次 cp 是什么时候；
+#   ③ CI 永远验证不到真实运行的那份代码。
+#
+# 这个 Dockerfile 把"代码层"做成真正的镜像层：BASE 是本地已存在的 nianyun:control，
+# 只 COPY 构建产物。**不需要网络、不需要 npm**，构建 1-2 秒，但产出的是不可变镜像：
+#   docker build -f deploy/control/Dockerfile.dist --build-arg BASE_IMAGE=nianyun:control-prev .
+# 回滚只需把 BASE_IMAGE 指回上一版的 tag。
+#
+# 工具链变更（新增扫描器、apt 包、node 大版本）仍然走 Dockerfile 全量构建，
+# 那时需要先修好 Docker Desktop 的出网代理。
+# syntax=docker/dockerfile:1.7
+
+ARG BASE_IMAGE=nianyun:control
+FROM ${BASE_IMAGE} AS control
+
+# 用于追溯：镜像里能查出这批 dist 是哪个 commit / 什么时候构建的
+ARG GIT_REV=unknown
+ARG BUILT_AT=unknown
+LABEL org.opencontainers.image.title="nianyun-control" \
+      org.opencontainers.image.description="Nianyun control plane (dist overlay build)" \
+      org.opencontainers.image.revision="${GIT_REV}" \
+      org.opencontainers.image.created="${BUILT_AT}" \
+      nianyun.build.strategy="dist-overlay"
+
+WORKDIR /opt/nianyun
+
+# 只替换生成物：dist 与 console/spa。不动 data/、不动 config、不动 tools 二进制。
+#
+# 为什么整个镜像只有 1 次 ADD：
+# Docker Desktop (WSL2) 的 BuildKit 在这台机器上**每次 COPY/ADD 都可能**报
+#   failed to solve: mount options is too long
+# 实测：COPY dist/ 能过，紧接着的 COPY console/spa/ 就炸；换成 ADD tar 之后，
+# 它又在后面的单个 COPY entrypoint.sh 上炸。也就是说 bug 与"条目多少"无关，
+# 与"同一次 build 里文件操作步数"相关（每步都往 rootfs 挂载项里追加）。
+# 因此这里把 dist / console/spa / entrypoint.sh / data/config 全部打进一个归档，
+# 一次 ADD 落地；chmod 与 mkdir 合并进唯一一条 RUN。
+RUN rm -rf /opt/nianyun/dist /opt/nianyun/console/spa
+ADD nianyun-dist.tar /
+RUN chmod 0755 /usr/local/bin/nianyun-control \
+ && mkdir -p /opt/nianyun/data/config
+
+EXPOSE 8700
+HEALTHCHECK --interval=20s --timeout=5s --start-period=25s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:8700/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["/usr/local/bin/nianyun-control"]

@@ -1,0 +1,32 @@
+# Job 镜像：Agent 的 Python/Shell POC 在这里跑。
+#
+# 默认极简（离线可构建）：python:3.11-slim 自带 python3 + bash + pip。
+# 需要 curl/jq/dig/nc 这类常用工具时用 `--build-arg INSTALL_TOOLS=1`（构建期要能出网/走代理）。
+# 运行期装依赖走沙箱代理（PIP_PROXY），不污染镜像。
+ARG BASE_IMAGE=python:3.11-slim
+FROM ${BASE_IMAGE}
+
+ARG INSTALL_TOOLS=0
+USER root
+RUN if [ "$INSTALL_TOOLS" = "1" ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends curl jq openssl ca-certificates iproute2 dnsutils netcat-openbsd \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# 预装 requests：POC 脚本十次有九次第一行就是 import requests，
+# 缺它会让整轮工具调用白跑（2026-11-02 m.ctrip.com 实测 ModuleNotFoundError）。
+# 离线构建时 pip 会失败——降级为"运行期用 requirements 走沙箱代理装"，不让构建整体挂掉。
+RUN pip install --no-cache-dir --disable-pip-version-check requests \
+ || echo "[warn] requests 未预装（构建期无网）；运行期用 requirements 走沙箱代理安装"
+
+# 以非 root 跑；job 目录由服务侧挂载成 /work。
+COPY sitecustomize.py /opt/sandbox/sitecustomize.py
+
+RUN useradd -r -u 10001 -m sandbox 2>/dev/null || true \
+ && mkdir -p /work \
+ && chown -R sandbox:sandbox /work
+USER sandbox
+WORKDIR /work
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/opt/sandbox
+ENTRYPOINT []

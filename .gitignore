@@ -1,0 +1,121 @@
+# Pack tarballs
+deploy/**/dist/
+hosted/**/dist/
+/deploy/inimage/
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+tools.env.yaml
+/config*.yaml
+!config.example.yaml
+*.pem
+*.key
+
+# Runtime data
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Node (console React SPA)
+node_modules/
+
+# Local browser / test dumps
+.playwright-mcp/
+test-results/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / temp
+*.log
+tmp/
+.cache/
+
+# Local bench artifacts (keep token/ovpn/dumps outside git)
+
+# Claude / Grok local
+.claude/settings.local.json
+.grok/
+
+# Local observer / capability cache
+.nianyun/
+
+# Generated frontend output and local toolkit leftovers
+/console/spa/
+/integrations/burp-bridge/target/
+/tools/c2/
+/tools/proxy/
+
+# Generated compatibility paths
+/tools/wordlists
+/workspaces/
+!/scripts/build/
+!/scripts/build/**
+
+/tools/
+/entrypoints/
+/deploy/install/
+
+# Deployment backups can contain model credentials and task sessions.
+/nianyun-backup*/
+*.sfdisk
+
+.sandbox.env
+
+# Local image staging and one-off probe scripts
+.layer-out/
+.tmp-probe/
+
+# One-off probes and captured live sessions.
+# `.tmp-oppo-sessions.json` alone is 354KB of real cookies from a production target —
+# these are working notes, not source. 2026-11-05 audit.
+.tmp-*
+
+# Local build tarball (shipped separately)
+nianyun-dist.tar
+*.tar
+
+# Generated tool manifest (npm run build:manifest)
+/generated/
+
+# Captured target assets and screenshot/GIF scratch dirs.
+# h02tmp is 141MB of PNG/GIF frames, h04tmp is real bundle JS from a live target.
+/h02tmp/
+/h04tmp/
+
+# Per-run workspace and reports hold live cookies/session dumps
+/workspace/
+/reports/
+
+# WorkBuddy local workspace: the knowledge log is worth keeping,
+# the dumps / vitest tmp / staged image are not.
+.workbuddy/*
+!.workbuddy/memory/
+!.workbuddy/memory/**
+

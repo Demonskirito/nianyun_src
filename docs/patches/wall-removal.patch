@@ -1,0 +1,234 @@
+diff --git a/src/blackbox/weights.ts b/src/blackbox/weights.ts
+index fe9b763..27fd3de 100644
+--- a/src/blackbox/weights.ts
++++ b/src/blackbox/weights.ts
+@@ -123,13 +123,23 @@ export type BudgetWindow = {
+  * full：按完整 playbook 推进（含 sqlmap/nuclei/katana 这类重型步骤）。
+  * fast：墙钟或权重已经放不下完整时间盒 → 只做轻量步骤，跳过重型扫描器。
+  */
++/**
++ * 一个重型步骤（nuclei / sqlmap / katana）的墙钟期望。
++ *
++ * 降级只看"还剩不剩得下一次重型步骤"，不再拿整条 playbook 的时间盒当判据：
++ * timebox 是"整场打法"的期望（600–1500s），wallMsLeft 是"本次 run 的剩余"（默认 1800s），
++ * 两者不可比 —— 跑 sqli（timebox 1500）满 300s 后 wallMsLeft 恒小于 timebox，
++ * 于是本 run 剩下的 1500 秒里 sqlmap 永远被判 budget_degraded。
++ * 而且 budgetView 取的是 min(timebox)，最紧的那条打法会绑架所有打法。
++ */
++export const HEAVY_STEP_SEC = 300;
++
+ export function budgetMode(window: BudgetWindow): { mode: BudgetMode; reasons: string[] } {
+   const reasons: string[] = [];
+-  const timeboxMs = Math.max(0, Number(window.timeboxSec) || 0) * 1000;
+-  if (window.wallMsLeft > 0 && timeboxMs > 0 && window.wallMsLeft < timeboxMs) {
+-    reasons.push(`墙钟只剩 ${Math.round(window.wallMsLeft / 1000)}s，放不下 ${Math.round(timeboxMs / 1000)}s 的完整时间盒`);
++  if (window.wallMsLeft > 0 && window.wallMsLeft < HEAVY_STEP_SEC * 1000) {
++    reasons.push(`墙钟只剩 ${Math.round(window.wallMsLeft / 1000)}s，不够一次重型步骤（约 ${HEAVY_STEP_SEC}s）`);
+   }
+-  if (window.weightLeft > 0 && window.weightLeft < 20) {
++  if (window.weightLeft > 0 && window.weightLeft < 5) {
+     reasons.push(`工具权重只剩 ${window.weightLeft}（重型扫描一次要 3–5）`);
+   }
+   if (window.scheduleMsLeft > 0 && window.scheduleMsLeft < 60_000) {
+diff --git a/src/blackbox/progress.ts b/src/blackbox/progress.ts
+index 003d544..d21ceff 100644
+--- a/src/blackbox/progress.ts
++++ b/src/blackbox/progress.ts
+@@ -9,7 +9,7 @@ import type { RecoveryRecord } from "./recovery.js";
+ import type { AcceptanceResult, ValidationIssue } from "./acceptance.js";
+ import { taskEvidenceIssue, taskAuditIssues } from "./task-evidence.js";
+ import { playbookById, stepForTool, type PlaybookRun } from "./playbooks.js";
+-import { completionDenial, denialOf, recordWallBypass, trackDenial, wallVerdict, type AuthWallState } from "./authwall.js";
++import { bypassChannelOf, completionDenial, denialOf, recordWallBypass, trackDenial, wallVerdict, type AuthWallState } from "./authwall.js";
+ import { isHeavyTool } from "./weights.js";
+ import { autoSalvageReason, autoSkipReason, pendingAdviceView, salvageAdviceIds } from "./advice.js";
+ 
+@@ -242,6 +242,19 @@ export class BlackboxProgress {
+       }
+       // "发个请求被拒"不是完成：只有拒绝证据的结案改成 blocked_by_auth 并交 Observer。
+       const denial = completionDenial(evidence, task, references, { NIANYUN_AUTH_WALL_CODES: this.authWall.codes.join(",") });
++      // 一组探测"一致地证明该入口鉴权正确"是可交付的负向结论，不是受阻。
++      // 不区分这两种，模型为了拿到 completed 会倾向于把"疑似"写成 finding —— 那是唯一会主动
++      // 降低报告质量的惩罚。
++      const negativeByDesign = ["auth_token", "unauth_exposure", "jwt_auth", "idor"].includes(String(record.playbook || ""));
++      // 至少要两条证据才算"一组探测"：只有一条 401 是"发了个请求被拒"，不是负向结论。
++      // 这个下限是防"打一个接口就宣布验证完成"的捷径。
++      if (denial.deniedOnly && denial.evidence >= 2 && negativeByDesign) {
++        Object.assign(record, { status: "completed", evidence_ids: [...references],
++          outcome_reason: `verified_negative: ${denial.denied}/${denial.evidence} 条证据一致指向鉴权正确（401/10403，无数据泄漏），结论是无该问题。` });
++        (this.state.taskOutcomeResults ||= {})[task] = { status: "applied", issues: [] };
++        resolve(`completion_without_valid_task_evidence:${task}`);
++        continue;
++      }
+       if (denial.deniedOnly && denial.evidence > 0) {
+         (this.state.taskOutcomeResults ||= {})[task] = { status: "rejected", issues: [...issues, { code: "COMPLETION_ON_DENIED_EVIDENCE", severity: "error", task_id: task, path: `${path}.evidence_ids`,
+           rule: "completion_requires_positive_evidence", message: `completion_on_denied_evidence:${task}` }] };
+@@ -609,8 +620,15 @@ export class BlackboxProgress {
+     }
+     health.zeros += 1;
+     if (health.zeros < 2) return;
+-    health.disabled = true;
+-    health.detail = `${name} 连续 ${health.zeros} 次 0 产出（模板不匹配或目标无命中），已在本会话禁用`;
++    // 不用"会话内禁用"惩罚 0 产出：nuclei 默认模板打不到目标、dalfox 对 SPA 无命中、
++    // sqlmap 参数不对，都能连续两次 0 产出，但换个模板 tag / 字典就有效。
++    // 真正的刹车是权重预算；这里只留一次提示。
++    health.detail = `${name} 已连续 ${health.zeros} 次 0 产出：换模板 tag / 换字典 / 换档位，不要用同一组参数重试。`;
++    if (health.zeros === 2) this.addInterrupts([{
++      id: `tool-health:${name}:${health.last_at}`, kind: "tool_health", severity: "medium",
++      text: `${name} 连续 2 次 0 产出。同参数重试不划算：换 tags/字典/扫描档位，或改用 http.request 手工验证。`,
++      data: { tool: name },
++    }]);
+   }
+ 
+   /**
+@@ -679,7 +697,10 @@ export class BlackboxProgress {
+     const normalized = routeTemplate(parsed.pathname, (this.state.route_memory ||= {}));
+     const key = `${parsed.host}${normalized.path}`;
+     const body = normalizeBody(String(data.body || "").replace(/\s+/g, " ").trim(), normalized.ids).slice(0, 300);
+-    const fingerprint = hash({ status: Number(data.status || 0), body });
++    // 耗时也是"形状"。时间盲注 / sleep 探测的响应体 100% 相同，唯一区别是耗时；
++    // 不把耗时纳入指纹，等于把"最需要重复请求的打法"直接判成"参数面榨干"。
++    const timingBucket = (ms: number): number => (ms < 300 ? 0 : ms < 1000 ? 1 : ms < 2500 ? 2 : 3);
++    const fingerprint = hash({ status: Number(data.status || 0), t: timingBucket(Number(data.duration_ms || 0)), body });
+     this.state.param_watch ||= {};
+     // 模板一旦折叠成功（/api/users/{p3}），把先前记在**同一 stem 的原始路径**上的计数全迁移过来：
+     // alice 一次 + bob 一次若各自记在自己路径下，永远凑不满阈值，熔断就漏判。
+@@ -720,12 +741,15 @@ export class BlackboxProgress {
+     if (!stalled) return;
+     watch.stalled_at = Date.now();
+     this.state.param_stall_alert = { path: key, calls: watch.calls, queries: watch.queries.length, fingerprints: watch.fingerprints.length, variants: (watch.variants || []).length, at: watch.stalled_at };
+-    const record = this.state.tasks[task];
+-    if (record && !["completed", "blocked", "failed"].includes(String(record.status))) {
+-      this.state.tasks[task] = { ...record, status: "blocked", reason: "param_stall",
+-        outcome_reason: `${key} 打了 ${watch.calls} 次、${watch.queries.length} 种参数，响应指纹只有 ${watch.fingerprints.length} 种：该参数面已榨干，换打法或换端点。` };
+-    }
++    // 熔断只发提示，不把任务判死。盲注与越权遍历本来就要"同一形状打很多次"，
++    // 判 blocked 会把需要耐心的打法提前掐死；真正的浪费由权重预算兜住。
++    this.addInterrupts([{
++      id: `param-stall:${key}:${watch.stalled_at}`, kind: "param_stall", severity: "medium",
++      text: `${key} 已打 ${watch.calls} 次、${watch.queries.length} 种参数，响应指纹只有 ${watch.fingerprints.length} 种：若是盲注/越权遍历，改看 time/status 维度继续；若是纯换参数穷举，换端点。`,
++      data: { path: key, calls: watch.calls, queries: watch.queries.length, fingerprints: watch.fingerprints.length },
++    }]);
+   }
++
+   /**
+    * 记一次响应：被拒绝就累加 streak，触墙后把当前任务置 blocked 并留一条 alert 让 Observer 介入。
+    * 401/业务码一律算拒绝；换到凭证能进（非拒绝响应）会把 streak 清零。
+@@ -736,6 +760,14 @@ export class BlackboxProgress {
+     const url = String(request.input?.url || data.final_url || data.requested_url || this.state.tasks[task]?.target || "");
+     if (!url) return;
+     const verdict = denialOf(data, { NIANYUN_AUTH_WALL_CODES: this.authWall.codes.join(",") });
++    // 放行通道里的探测是"绕墙的正路"，不是撞墙：被拒也不进 streak，否则墙会被自己人推倒。
++    // 只在 denied 时跳过——正常响应仍然要经过 trackDenial，那里负责把 streak 清零。
++    if (verdict.denied && bypassChannelOf(url, request.input, {
++      playbook: this.playbookOf(task),
++      safePaths: this.wallOptions.safePaths,
++      allowUnauthPlaybook: this.wallOptions.allowUnauthPlaybook,
++      allowBypass: this.wallOptions.allowBypass,
++    })) return;
+     const tracked = trackDenial(this.state, { url, denied: verdict.denied, code: verdict.code }, this.authWall.streak_limit);
+     if (!verdict.denied) return;
+     const wall = tracked.state;
+diff --git a/src/blackbox/authwall.ts b/src/blackbox/authwall.ts
+index 9220f4f..da9871d 100644
+--- a/src/blackbox/authwall.ts
++++ b/src/blackbox/authwall.ts
+@@ -172,6 +172,22 @@ export function carriesAuth(input: Record<string, unknown> | undefined): boolean
+  *   2. 任务绑定的是 unauth_exposure / jwt_auth 打法；
+  *   3. 模型显式写 input.bypass_auth_wall=true（规则允许时）。
+  */
++/**
++ * 这条请求是否命中放行通道（不看墙是否已经触发）。
++ *
++ * 独立于 wallVerdict 的原因是计数顺序：streak 在 trackDenial 里累加，而 wallVerdict
++ * 只在 tripped 之后才被调用。于是"打 .env / /actuator/env / /swagger-ui.html 各一次 401"
++ * 这三条本该放行的未授权探测会把 streak 推过阈值，让正在找未授权入口的任务被判 blocked_by_auth。
++ */
++export function bypassChannelOf(url: string, input: Record<string, unknown> | undefined, options: WallOptions = {}): "safe_path" | "unauth_playbook" | "explicit" | undefined {
++  if (AUTH_PATH.test(url)) return "safe_path";
++  if (options.allowBypass !== false && input?.bypass_auth_wall === true) return "explicit";
++  if (options.allowUnauthPlaybook !== false && options.playbook && WALL_BYPASS_PLAYBOOKS.has(options.playbook)) return "unauth_playbook";
++  const safePaths = options.safePaths || [];
++  if (safePaths.length && safePaths.some(item => url.toLowerCase().includes(item.toLowerCase()))) return "safe_path";
++  return undefined;
++}
++
+ export function wallVerdict(state: { auth_wall?: AuthWallState }, url: string, input: Record<string, unknown> | undefined, options: WallOptions = {}): WallVerdict {
+   const wall = state.auth_wall;
+   if (!wall?.tripped_at) return { blocked: false };
+diff --git a/src/blackbox/findings.ts b/src/blackbox/findings.ts
+index 51ee9ed..5d75311 100644
+--- a/src/blackbox/findings.ts
++++ b/src/blackbox/findings.ts
+@@ -1,5 +1,6 @@
+ import { z } from "zod/v4";
+ import { evidenceUrls } from "./facts.js";
++import { normalizePath } from "./urlnorm.js";
+ import { chainMermaid, killChainForTarget, type AttackGraphState } from "./graph/index.js";
+ 
+ const text = z.string().trim().min(1).max(8000);
+@@ -17,9 +18,16 @@ export type Finding = z.infer<typeof findingSchema> & {
+ export function validateFinding(finding: z.infer<typeof findingSchema>, evidence: Record<string, unknown>[]): string | undefined {
+   const referenced = finding.evidence_ids.map(id => evidence.find(e => e.id === id));
+   if (referenced.some(e => !e)) return "候选发现引用了不存在的会话证据";
+-  if (!referenced.some(e => e?.kind === "tool-result" && (e.data as Record<string, unknown>)?.ok === true && evidenceUrls(e).some(url => {
+-    try { return new URL(url).href === new URL(finding.target).href; } catch { return false; }
+-  }))) return "候选发现必须引用该目标成功的原始工具结果";
++  // 用 href 全等比较会让重定向、尾斜杠、以及越权场景里的"另一个 id"全部引用失败，
++  // 而报错只说"必须引用该目标成功的原始工具结果"，模型无从自查。
++  const sameTarget = (a: string, b: string): boolean => {
++    try {
++      const left = new URL(a); const right = new URL(b);
++      return left.host === right.host && normalizePath(left.pathname).path === normalizePath(right.pathname).path;
++    } catch { return a === b; }
++  };
++  if (!referenced.some(e => e?.kind === "tool-result" && (e.data as Record<string, unknown>)?.ok === true
++    && evidenceUrls(e).some(url => sameTarget(url, finding.target)))) return "候选发现必须引用该目标成功的原始工具结果";
+   return undefined;
+ }
+ 
+diff --git a/src/blackbox/supervision.ts b/src/blackbox/supervision.ts
+index 34eb334..8df1b3a 100644
+--- a/src/blackbox/supervision.ts
++++ b/src/blackbox/supervision.ts
+@@ -82,8 +82,10 @@ export function superviseCheckpoint(state: RunCheckpoint, budget: SupervisionBud
+     state.supervision.reviewPending = true;
+     return { action: "observer", reasons: [...reasons, "validation_failed"], warnings, coverage, acceptance: reviewedAcceptance };
+   }
++  // 每 5 个权重就唤醒一次 Observer，等于把预算砍半：600 权重下是 120 次额外 LLM 调用。
++  // 语义事件（新发现、失败、鉴权墙、预算告警）已经足够触发审阅，这里只留低频心跳。
+   const semanticEvent = Boolean(authWall || event.newFinding || event.failed || event.failureKind === "stall" ||
+-    (event.madeProgress && usage.toolCalls > 0 && (usage.toolCalls === 1 || usage.toolCalls % 5 === 0)) || warningsChanged);
++    (event.madeProgress && usage.toolCalls > 0 && (usage.toolCalls === 1 || usage.toolCalls % 20 === 0)) || warningsChanged);
+   // A new finding still needs Observer review before a completed task set is accepted.
+   if (semanticEvent || !acceptance.required_reviews_complete) {
+     state.supervision.reviewPending = true;
+diff --git a/src/blackbox/workspace.ts b/src/blackbox/workspace.ts
+index ac88747..b9138de 100644
+--- a/src/blackbox/workspace.ts
++++ b/src/blackbox/workspace.ts
+@@ -500,7 +500,9 @@ async function runLocalSandbox(ctx: BlackboxToolContext, options: {
+   const code = String(options.code || "");
+   if (!code.trim()) throw new Error("code must not be empty");
+   if (code.length > 200_000) throw new Error("code exceeds 200KB");
+-  const timeoutS = clamp(options.timeout_s, 60, 5, 300);
++  // protocol.ts 已允许 900s，mcp.ts 只允许 300，这里又 clamp 到 300：
++  // 三处不一致时模型看到的是最大值，实际被静默砍掉。深挖一条签名/加密链 300s 不够。
++  const timeoutS = clamp(options.timeout_s, 60, 5, 900);
+   const memoryMb = clamp(options.memory_mb, 512, 128, 4096);
+   const requirements = (options.requirements || []).map(item => String(item).trim()).filter(Boolean);
+   if (requirements.length > 8) throw new Error("at most 8 requirements per run");
+diff --git a/src/blackbox/mcp.ts b/src/blackbox/mcp.ts
+index 3c7645e..fd069b8 100644
+--- a/src/blackbox/mcp.ts
++++ b/src/blackbox/mcp.ts
+@@ -58,7 +58,8 @@ function inputSchema() {
+     action: z.enum(["start", "poll", "stop", "list", "new", "close", "switch"]).optional(),
+     // 协商 / 沙箱 / 工作区（MCP 客户端要能看见这些字段，否则会以为工具没有入参）。
+     category: z.string().max(64).optional(),
+-    timeout_s: z.number().int().min(5).max(300).optional(),
++    // protocol.ts 已允许 900s；这里与 workspace.ts 的 clamp 保持一致，避免"看到 900、实际 300"。
++    timeout_s: z.number().int().min(5).max(900).optional(),
+     rate_limit: z.number().int().min(5).max(150).optional(),
+     katana_depth: z.number().int().min(1).max(8).optional(),
+     katana_duration_s: z.number().int().min(15).max(300).optional(),

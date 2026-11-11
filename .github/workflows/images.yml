@@ -1,0 +1,63 @@
+name: container-release
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified control image to GHCR
+        type: boolean
+        default: false
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+  packages: write
+jobs:
+  control-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            console/package-lock.json
+      - name: Check GHCR package visibility matches the repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/build/verify-package-privacy.mjs
+      - run: npm ci && npm --prefix console ci
+      - run: npm test && npm run build
+      - name: Build control image
+        run: docker build -f deploy/control/Dockerfile -t nianyun:ci .
+      - name: Smoke test the control image
+        run: |
+          docker run -d --name nianyun-ci -e NIANYUN_MODE=serve -p 18700:8700 nianyun:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18700/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18700/health
+          curl -fsS http://127.0.0.1:18700/api/status
+          docker stop nianyun-ci
+      - name: Publish verified image
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          registry="ghcr.io/${OWNER,,}/nianyun"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          for tag in "sha-${SHA:0:12}" latest; do
+            docker tag nianyun:ci "$registry:$tag"
+            docker push "$registry:$tag"
+          done
+          if [[ "$REF" == v* ]]; then
+            docker tag nianyun:ci "$registry:$REF"
+            docker push "$registry:$REF"
+          fi

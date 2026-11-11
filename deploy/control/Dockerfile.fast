@@ -1,0 +1,50 @@
+# Fast application refresh image.
+# It reuses the stable nianyun:control tool image and only rebuilds the
+# TypeScript server, console bundle, and application resources.
+# Use compose.control.full.yaml when changing the toolchain or system packages.
+# syntax=docker/dockerfile:1.7
+
+ARG NODE_IMAGE=node:22.22.0-bookworm-slim
+ARG BASE_IMAGE=nianyun:control
+
+FROM ${NODE_IMAGE} AS build
+WORKDIR /opt/nianyun
+COPY package.json package-lock.json ./
+COPY console/package.json console/package-lock.json ./console/
+# No BuildKit cache mount here: on Docker Desktop (Windows/WSL2) the /root/.npm cache
+# mount intermittently fails with "Exit handler never called" / "mount options is too
+# long", which makes an otherwise reproducible image refresh impossible. The plain
+# layer cache is enough — this step only re-runs when the lockfiles change.
+RUN npm ci && npm --prefix console ci
+COPY tsconfig.json ./
+COPY src/ ./src/
+COPY bin/ ./bin/
+COPY scripts/ ./scripts/
+COPY resources/ ./resources/
+COPY deploy/unified/ ./deploy/unified/
+COPY console/ ./console/
+COPY tools.env.example.yaml ./
+RUN npm run build && npm prune --omit=dev \
+ && rm -rf src console/src console/node_modules /root/.npm
+
+FROM ${BASE_IMAGE} AS control
+WORKDIR /opt/nianyun
+# Only generated application outputs are replaced; no user data/config is removed.
+RUN rm -rf /opt/nianyun/dist /opt/nianyun/console/spa /opt/nianyun/bin /opt/nianyun/resources /opt/nianyun/deploy/unified /opt/nianyun/entrypoints /opt/nianyun/deploy/vpn /opt/nianyun/src /opt/nianyun/console/src
+COPY --from=build /opt/nianyun/dist/ /opt/nianyun/dist/
+COPY --from=build /opt/nianyun/console/spa/ /opt/nianyun/console/spa/
+COPY --from=build /opt/nianyun/bin/ /opt/nianyun/bin/
+COPY --from=build /opt/nianyun/resources/ /opt/nianyun/resources/
+COPY --from=build /opt/nianyun/deploy/unified/ /opt/nianyun/deploy/unified/
+COPY --from=build /opt/nianyun/tools.env.example.yaml /opt/nianyun/tools.env.example.yaml
+COPY deploy/control/config.yaml /opt/nianyun/deploy/control/config.yaml
+COPY deploy/control/entrypoint.sh /usr/local/bin/nianyun-control
+RUN sed -i 's/\r$//' /usr/local/bin/nianyun-control \
+ && find /opt/nianyun/bin -type f -exec sed -i 's/\r$//' {} + \
+ && find /opt/nianyun/deploy/unified -type f -name '*.sh' -exec sed -i 's/\r$//' {} + \
+ && chmod 0755 /usr/local/bin/nianyun-control /opt/nianyun/bin/* \
+ && mkdir -p /opt/nianyun/data/config
+EXPOSE 8700
+HEALTHCHECK --interval=20s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:8700/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["/usr/local/bin/nianyun-control"]

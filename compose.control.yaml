@@ -1,0 +1,136 @@
+name: nianyun-control
+
+services:
+  nianyun:
+    build:
+      context: .
+      dockerfile: deploy/control/Dockerfile.fast
+    image: ${NIANYUN_CONTROL_IMAGE:-nianyun:control}
+    init: true
+    networks:
+      - default
+      - arl
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${NIANYUN_BIND:-127.0.0.1}:${NIANYUN_PORT:-8700}:8700"
+    volumes:
+      - nianyun-control-data:/opt/nianyun/data
+    # 控制面**不挂** docker.sock：exec.python/exec.bash 一律转发给下面的 sandbox 服务。
+    depends_on:
+      - sandbox
+    environment:
+      NIANYUN_MODE: ${NIANYUN_MODE:-serve}
+      BLACKBOX_AGENT_BASE_URL: ${BLACKBOX_AGENT_BASE_URL:-}
+      BLACKBOX_AGENT_MODEL: ${BLACKBOX_AGENT_MODEL:-}
+      BLACKBOX_AGENT_API_KEY: ${BLACKBOX_AGENT_API_KEY:-}
+      ASSET_AGENT_BASE_URL: ${ASSET_AGENT_BASE_URL:-}
+      ASSET_AGENT_MODEL: ${ASSET_AGENT_MODEL:-}
+      ASSET_AGENT_API_KEY: ${ASSET_AGENT_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      INTERACTSH_URL: ${INTERACTSH_URL:-https://oast.pro}
+      INTERACTSH_CLIENT_PATH: ${INTERACTSH_CLIENT_PATH:-/usr/local/bin/interactsh-client}
+      INTERACTSH_TOKEN: ${INTERACTSH_TOKEN:-}
+      # Node's fetch only honours HTTP(S)_PROXY with this flag (Node >= 22.21). Docker Desktop
+      # does not inject the proxy env into compose containers, so it is set here for the host's
+      # local proxy (Clash/verge-mihomo on 7897). Override with NIANYUN_CONTAINER_PROXY for a
+      # different proxy host; an empty value disables proxying for the container.
+      NODE_USE_ENV_PROXY: ${NODE_USE_ENV_PROXY:-1}
+      # bin/nianyun-run clears host proxies unless this is set. Keeping them makes every egress path
+      # in this container (fetch, Chromium page capture, probing) use the host proxy, which is the
+      # only route that actually reaches the internet on this network. Internal service names stay
+      # direct via NO_PROXY below; FOFA additionally pins an explicit FOFA_PROXY.
+      NIANYUN_KEEP_PROXY: ${NIANYUN_KEEP_PROXY:-1}
+      HTTP_PROXY: ${NIANYUN_CONTAINER_PROXY:-http://host.docker.internal:7897}
+      HTTPS_PROXY: ${NIANYUN_CONTAINER_PROXY:-http://host.docker.internal:7897}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,.internal,.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16},sandbox,arl-web,arl-worker,arl-scheduler,arl-mongodb,arl-rabbitmq
+      # Sidecar Sandbox Service：控制面不带 docker.sock，代码执行一律转发。
+      SANDBOX_URL: ${SANDBOX_URL:-http://sandbox:8790}
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8700/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Sidecar Sandbox Service ───────────────────────────────────────────────
+  # 唯一持有 docker.sock 的容器。它同时是 job 的出口代理：
+  #   job 容器 → sandbox-egress(internal) → 本服务:8899 → Burp → 目标
+  sandbox:
+    # 镜像先手工构建（见 deploy/sandbox/README 的 build 命令）：
+    #   docker build -f deploy/sandbox/Dockerfile -t nianyun:sandbox-service .layer-out
+    image: ${NIANYUN_SANDBOX_IMAGE:-nianyun:sandbox-service}
+    init: true
+    networks:
+      - default
+      - sandbox-egress
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # 唯一的 socket 挂载点；控制面容器没有。
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nianyun-sandbox-jobs:/var/lib/nianyun-sandbox/jobs
+      - nianyun-sandbox-state:/var/lib/nianyun-sandbox/state
+    environment:
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
+      # 安全默认：关闭匿名访问。本地 dev 若未配置 SANDBOX_TOKEN，请显式设置
+      # 环境变量 SANDBOX_ALLOW_ANON=true，或在生产中配置真实 token（SANDBOX_TOKEN）。
+      SANDBOX_ALLOW_ANON: "${SANDBOX_ALLOW_ANON:-false}"
+      SANDBOX_PORT: "8790"
+      # job 的出口：链到内部 MITM；job 内看到的是本服务在 sandbox-egress 上的代理端口。
+      SANDBOX_UPSTREAM_PROXY: ${BURP_PROXY_URL:-http://host.docker.internal:8080}
+      SANDBOX_PROXY_FOR_JOBS: ${SANDBOX_PROXY_FOR_JOBS:-http://sandbox:8899}
+      SANDBOX_PROXY_PORT: "8899"
+      SANDBOX_NETWORK: ${SANDBOX_NETWORK:-nianyun-control_sandbox-egress}
+      # 带扫描器（nuclei/katana/ffuf/httpx/dalfox/sqlmap/…）的 job 镜像；基线镜像见 deploy/sandbox/Dockerfile.job
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-nianyun:sandbox-scanner}
+      # 只读挂载：nuclei 模板卷（job 里路径 /opt/nianyun/data/nuclei-templates）
+      SANDBOX_MOUNTS: ${SANDBOX_MOUNTS:-nianyun-sandbox-templates:/opt/nianyun/data/nuclei-templates:ro}
+      # MITM 自签证书会让 job 里的 requests/urllib/pip 全部报证书错误。二选一：
+      #   SANDBOX_CA_PEM=<宿主机 burp CA 路径>  → 挂进 /opt/certs/proxy-ca.pem，真正校验
+      #   SANDBOX_TLS_INSECURE=1                → 只在沙箱内换成不校验（授权实验环境）
+      SANDBOX_CA_PEM: ${SANDBOX_CA_PEM:-}
+      # 跨调用 /state 持久卷：每个会话一个 volume subpath，job 挂到 /state（/work 仍一次性）。
+      SANDBOX_STATE_VOLUME: ${SANDBOX_STATE_VOLUME:-nianyun-sandbox-state}
+      SANDBOX_STATE_ROOT: /var/lib/nianyun-sandbox/state
+      SANDBOX_STATE_MAX_MB: ${SANDBOX_STATE_MAX_MB:-50}
+      SANDBOX_STATE_MAX_FILES: ${SANDBOX_STATE_MAX_FILES:-100}
+      SANDBOX_STATE_TTL_H: ${SANDBOX_STATE_TTL_H:-12}
+      # 默认校验 TLS（0）。仅当沙箱出口经自签 MITM（Burp）且无法提供 CA 时才临时设为 1。
+      SANDBOX_TLS_INSECURE: "${SANDBOX_TLS_INSECURE:-0}"
+      # 有 gVisor 时设为 runsc，isolation 会从 container 升到 microvm。
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-}
+      SANDBOX_MAX_CONCURRENCY: ${SANDBOX_MAX_CONCURRENCY:-4}
+      SANDBOX_MAX_QUEUE: ${SANDBOX_MAX_QUEUE:-16}
+      SANDBOX_TIMEOUT_MAX_S: ${SANDBOX_TIMEOUT_MAX_S:-300}
+      SANDBOX_MEMORY_MAX_MB: ${SANDBOX_MEMORY_MAX_MB:-4096}
+      SANDBOX_EGRESS_DENY: ${SANDBOX_EGRESS_DENY:-169.254.169.254,metadata.google.internal,127.0.0.1,localhost}
+      NODE_USE_ENV_PROXY: "0"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8790/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  nianyun-control-data:
+  nianyun-sandbox-jobs:
+  # 跨调用 /state：一个卷、每会话一个 subpath，会话结束/超时后由服务清理。
+  # name 固定：docker API 里按名字引用（compose 默认会加 project 前缀，导致 job 挂到另一个空卷）。
+  nianyun-sandbox-state:
+    name: nianyun-sandbox-state
+
+networks:
+  arl:
+    external: true
+    name: nianyun_default
+  # internal=true：没有默认路由。job 容器只能连到同样在这个网络上的 sandbox 服务，
+  # 也就是唯一能到 Burp 的出口代理。
+  sandbox-egress:
+    internal: true

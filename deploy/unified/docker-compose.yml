@@ -1,0 +1,3 @@
+# Compatibility entry. Canonical deployment is the root compose.yaml.
+include:
+  - ../../compose.yaml

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+HERE="$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)"
+exec "$HERE/nianyun-run" dist/control/cli.js "$@"
