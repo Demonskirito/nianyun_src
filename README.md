@@ -107,14 +107,47 @@ docker compose -f compose.yaml up -d --build
 ```
 
 That builds the control image from `deploy/control/Dockerfile` and starts only
-the console. The sidecar stack (`compose.control.yaml`) additionally needs a
-pre-built `nianyun:sandbox-service` image (see the build note in that file).
-Once both `nianyun:control` and the sandbox image exist:
+the console. The sidecar stack (`compose.control.yaml`) additionally needs three
+sandbox images, all built from this repository — no hand-assembled build context:
 
 ```bash
-docker build -f deploy/control/Dockerfile -t nianyun:control .
+npm ci
+npm run build:server                                              # dist/ for the sidecar service
+docker build -f deploy/control/Dockerfile -t nianyun:control .    # scanner copies tool binaries from here
+npm run sandbox:images                                            # build all three sandbox images
 docker compose -f compose.control.yaml up -d --no-build
 ```
+
+`sandbox:images` builds in dependency order:
+
+| Image | Dockerfile | Role |
+|---|---|---|
+| `nianyun:sandbox` | `deploy/sandbox/Dockerfile.job` | minimal Python/Bash job image |
+| `nianyun:sandbox-scanner` | `deploy/sandbox/Dockerfile.scanner` | job image + scanner binaries copied from `nianyun:control`; default `SANDBOX_IMAGE` |
+| `nianyun:sandbox-service` | `deploy/sandbox/Dockerfile` | sidecar holding `docker.sock` + egress proxy on `8790`/`8899` |
+
+Single-image rebuilds are available as `npm run sandbox:image`,
+`npm run sandbox:image:scanner` and `npm run sandbox:image:service`.
+Behind a proxy the build container often cannot reach PyPI, which would make
+`Dockerfile.job` skip the pre-installed `requests` and fall back to a runtime
+install. Pass the proxy to that one build instead:
+
+```bash
+npm run sandbox:image -- --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
+  --build-arg HTTPS_PROXY=http://host.docker.internal:7897
+npm run sandbox:image:scanner
+npm run sandbox:image:service
+```
+
+The default `SANDBOX_MOUNTS` expects a named volume
+`nianyun-sandbox-templates` holding a nuclei templates checkout at
+`/opt/nianyun/data/nuclei-templates`. Docker creates an **empty** volume if it
+is missing, so populate it before running template-based scans; an empty
+volume silently leaves nuclei with no templates.
+
+The sidecar refuses to start without `SANDBOX_TOKEN` (or an explicit
+`SANDBOX_ALLOW_ANON=true` on a dev box); the control plane must be given the
+same token through `SANDBOX_URL` / `SANDBOX_TOKEN`.
 
 `compose.control.yaml` defaults to `Dockerfile.fast` for fast local rebuilds from
 a pre-built base; `--no-build` skips it and uses the image built above. Behind a

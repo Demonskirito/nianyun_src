@@ -2,15 +2,20 @@
 #
 # 只有这个容器持有 /var/run/docker.sock：控制面容器永远不挂。
 # docker CLI 从官方 cli 镜像里取，避免在构建期拉 apk 包（离线/代理受限也能构建）。
+# 构建上下文是仓库根目录（不再是手工拼装的 .layer-out）：
+#   npm run build:server
+#   docker build -f deploy/sandbox/Dockerfile -t nianyun:sandbox-service .
 # syntax=docker/dockerfile:1.7
 FROM node:22.22.0-bookworm-slim
 
 COPY --from=docker:29.3.0-cli /usr/local/bin/docker /usr/local/bin/docker
 
 # 只跑沙箱服务的编排逻辑，不需要 playwright/浏览器。
+# dist/ 与旧的 .layer-out/server/ 是同一份 tsc 输出，镜像内路径保持
+# /opt/nianyun-sandbox/dist/sandbox/server.js 不变。
 WORKDIR /opt/nianyun-sandbox
-COPY server/ /opt/nianyun-sandbox/dist/
-COPY package.json /opt/nianyun-sandbox/package.json
+COPY dist/ /opt/nianyun-sandbox/dist/
+COPY deploy/sandbox/package.json /opt/nianyun-sandbox/package.json
 
 RUN mkdir -p /var/lib/nianyun-sandbox/jobs \
  && groupadd -r sandbox 2>/dev/null || true \

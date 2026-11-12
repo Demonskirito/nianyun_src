@@ -62,8 +62,8 @@ services:
   # 唯一持有 docker.sock 的容器。它同时是 job 的出口代理：
   #   job 容器 → sandbox-egress(internal) → 本服务:8899 → Burp → 目标
   sandbox:
-    # 镜像先手工构建（见 deploy/sandbox/README 的 build 命令）：
-    #   docker build -f deploy/sandbox/Dockerfile -t nianyun:sandbox-service .layer-out
+    # 三个沙盒镜像（service / job / scanner）用 `npm run sandbox:images` 一次性构建，
+    # 或单独：`npm run sandbox:image:service`（构建上下文是仓库根目录，不需要 .layer-out）。
     image: ${NIANYUN_SANDBOX_IMAGE:-nianyun:sandbox-service}
     init: true
     networks:
