@@ -1,7 +1,7 @@
 # Unified control image: console, asset pipeline, and blackbox sessions.
-execution:
-  mode: serve
-
+# Execution mode comes from NIANYUN_MODE (default: serve). Do not pin it here:
+# executionPolicy() rejects a config mode that disagrees with the environment,
+# which would crash-loop the console on first boot when an operator sets execute.
 paths:
   data_dir: /opt/nianyun/data
   tools_env: /opt/nianyun/data/config/tools.env.yaml

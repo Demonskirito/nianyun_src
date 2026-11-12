@@ -128,16 +128,17 @@ docker compose -f compose.control.yaml up -d --no-build
 
 Single-image rebuilds are available as `npm run sandbox:image`,
 `npm run sandbox:image:scanner` and `npm run sandbox:image:service`.
-Behind a proxy the build container often cannot reach PyPI, which would make
-`Dockerfile.job` skip the pre-installed `requests` and fall back to a runtime
-install. Pass the proxy to that one build instead:
+`sandbox:images` auto-detects a local proxy (ports 7897/7890/10809/1080/8080)
+and forwards it to the base job build, so `requests` is baked in even when the
+build container cannot reach PyPI directly. Override the detection with
+`NIANYUN_BUILD_PROXY`, or pass `--build-arg` to the single-image script:
 
 ```bash
-npm run sandbox:image -- --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
-  --build-arg HTTPS_PROXY=http://host.docker.internal:7897
-npm run sandbox:image:scanner
-npm run sandbox:image:service
+npm run sandbox:image -- --build-arg HTTPS_PROXY=http://host.docker.internal:7897
 ```
+
+If no proxy is detected and PyPI is unreachable, the job image still builds but
+`requests` falls back to a runtime install and the script prints a warning.
 
 The default `SANDBOX_MOUNTS` expects a named volume
 `nianyun-sandbox-templates` holding a nuclei templates checkout at
@@ -155,8 +156,15 @@ restrictive proxy the control image may need the mirror build args documented in
 `deploy/control/README.md`.
 
 The console listens on `http://127.0.0.1:8700/` (override with `NIANYUN_PORT`).
-On Windows, 8700 can fall inside the Hyper-V excluded port range; if binding
-fails with "forbidden by its access permissions", pick another `NIANYUN_PORT`.
+On Windows, Hyper-V/WSL can reserve a whole block (for example 8205–8904), so
+8700 and 8800 may both fail with "forbidden by its access permissions"; pick a
+port outside the reserved ranges, e.g. `NIANYUN_PORT=18700`, and check them
+with `netsh interface ipv4 show excludedportrange protocol=tcp`.
+
+`execution.mode` is deliberately not pinned in the shipped config templates:
+`NIANYUN_MODE` is the single source of truth (default `serve`, which returns
+403 for tool execution). Set `NIANYUN_MODE=execute` in `.env` to actually run
+asset discovery, probing and blackbox tools.
 
 ### Optional: ARL discovery stack
 

@@ -1,8 +1,7 @@
 # Minimal control-plane configuration for SRC asset discovery and blackbox sessions.
-# Network execution stays disabled until the operator explicitly switches mode.
-execution:
-  mode: serve
-
+# Network execution stays disabled by default (serve). NIANYUN_MODE is the single
+# source of truth; pinning execution.mode here would conflict with the env and
+# abort startup via "execution mode conflict".
 paths:
   data_dir: /opt/nianyun/data
   tools_env: /opt/nianyun/data/config/tools.env.yaml

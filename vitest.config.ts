@@ -1,6 +1,17 @@
+import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig } from "vitest/config";
+
+// Vitest 给每个 project 建的临时目录是 join(os.tmpdir(), id)，Windows 上会落到
+// 系统 Temp；某些 IDE/沙箱的 fs shim 会拒绝那里的写入，测试跑完冒出 EPERM
+// unhandled errors。把 TEMP/TMP/TMPDIR 指到工作区内（os.tmpdir() 会读它们），
+// 生产路径由 compose / SANDBOX_* 决定，不受影响；CI 同样适用。
+const testTmpRoot = join(process.cwd(), ".vitest-tmp");
+mkdirSync(testTmpRoot, { recursive: true });
+process.env.TEMP = testTmpRoot;
+process.env.TMP = testTmpRoot;
+process.env.TMPDIR = testTmpRoot;
 
 // startSandboxService 默认在 /var/lib/nianyun-sandbox/{state,jobs} 建目录。
 // 生产容器以 root 运行没问题，但 CI runner 是非 root，直接 EACCES。

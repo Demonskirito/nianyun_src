@@ -19,7 +19,7 @@
     "sandbox:image": "docker build -f deploy/sandbox/Dockerfile.job -t nianyun:sandbox deploy/sandbox",
     "sandbox:image:scanner": "docker build -f deploy/sandbox/Dockerfile.scanner -t nianyun:sandbox-scanner deploy/sandbox",
     "sandbox:image:service": "docker build -f deploy/sandbox/Dockerfile -t nianyun:sandbox-service .",
-    "sandbox:images": "npm run build:server && npm run sandbox:image && npm run sandbox:image:scanner && npm run sandbox:image:service"
+    "sandbox:images": "npm run build:server && node scripts/build-sandbox-images.mjs"
   },
   "engines": {
     "node": ">=22.19.0"

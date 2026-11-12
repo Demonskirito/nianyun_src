@@ -1,11 +1,11 @@
 # Copy to config.yaml. Never commit secrets.
 #
-# Execution modes:
+# Execution modes (select with NIANYUN_MODE; default is serve):
 #   serve   - console + configuration; network actions are refused
 #   execute - enable asset discovery, probing, review and blackbox tool execution
 #   inspect - print the resolved mode and exit
-execution:
-  mode: serve
+# Do not pin execution.mode here: NIANYUN_MODE is the single source of truth,
+# and a mismatched config value aborts startup with "execution mode conflict".
 
 paths:
   data_dir: data

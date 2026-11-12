@@ -1,12 +1,14 @@
 name: image
 
-# 镜像守卫：任何合并进主干的改动，都必须在**干净的 Docker 环境**里从 Dockerfile 构建成功。
-# 本地这台机器因为基础镜像有 480 层触发 overlay 的 "mount options is too long"，
-# 只能走 docker commit / cp；CI 里没有这个包袱，所以把"真构建"放在这里兜底。
+# 镜像守卫：push 到主干先跑 typecheck / build / 工具清单零漂移 / 测试；
+# 全量 Docker 构建放在干净的 CI 环境里按计划或手动触发，验证 Dockerfile 自洽、
+# 固定版本与校验和没有腐坏（本地构建同样可用，不再依赖 docker commit/cp）。
 #
-# 两个 job：
-#   build-fast  —— deploy/control/Dockerfile.fast（日常代码镜像，跑 --no-cache 证明可复现）
-#   build-full  —— deploy/control/Dockerfile（工具链全量，手动或每周触发，防止 PD 版本/校验和腐坏）
+# 三个 job：
+#   typecheck-and-test —— 每次 push 都跑：tsc、npm run build、manifest 一致性、vitest
+#   build-fast         —— Dockerfile.fast 的 --no-cache 冒烟；仅在手动触发且给出
+#                        已发布的 BASE_IMAGE 时运行（干净 CI 里没有本地基础镜像）
+#   build-full         —— Dockerfile 全量工具链构建，每周一 03:00 UTC 或手动触发
 
 on:
   push:

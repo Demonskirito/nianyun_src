@@ -91,6 +91,10 @@ tmp/
 # Local image staging and one-off probe scripts
 .layer-out/
 .tmp-probe/
+# Vitest worker temp root (see vitest.config.ts): keeps transient files inside
+# the workspace instead of the system Temp dir, where the IDE fs shim on
+# Windows rejects writes with EPERM.
+.vitest-tmp/
 
 # One-off probes and captured live sessions.
 # `.tmp-oppo-sessions.json` alone is 354KB of real cookies from a production target —
