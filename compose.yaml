@@ -1,10 +1,17 @@
 name: nianyun
+# Control plane + optional ARL discovery stack.
+# A plain `docker compose up -d` starts ONLY the control plane: every ARL
+# service (and its mongo/rabbitmq dependencies) is behind `profiles: ["arl"]`.
+# There are no built-in credentials. Fill .env from .env.example before
+# enabling ARL; the ARL entrypoint refuses to start with missing credentials.
+# See README.md "Deployment with Docker" and THIRD_PARTY_NOTICES.md.
+
 services:
   nianyun:
     build:
       context: .
       dockerfile: deploy/control/Dockerfile
-    image: ${NIANYUN_IMAGE:-ghcr.io/Demonskirito/nianyun:latest}
+    image: ${NIANYUN_IMAGE:-ghcr.io/demonskirito/nianyun:latest}
     platform: linux/amd64
     init: true
     ports:
@@ -14,8 +21,9 @@ services:
     shm_size: 1gb
     environment:
       NIANYUN_MODE: ${NIANYUN_MODE:-serve}
+      # ARL is optional: without ARL_TOKEN the provider is simply unavailable.
       ARL_URL: ${ARL_URL:-http://arl-web:5003}
-      ARL_TOKEN: ${ARL_TOKEN:-nianyun-local-arl-key}
+      ARL_TOKEN: ${ARL_TOKEN:-}
       BLACKBOX_AGENT_BASE_URL: ${BLACKBOX_AGENT_BASE_URL:-}
       BLACKBOX_AGENT_MODEL: ${BLACKBOX_AGENT_MODEL:-}
       BLACKBOX_AGENT_API_KEY: ${BLACKBOX_AGENT_API_KEY:-}
@@ -29,9 +37,6 @@ services:
       INTERACTSH_CLIENT_PATH: ${INTERACTSH_CLIENT_PATH:-/usr/local/bin/interactsh-client}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      arl-web:
-        condition: service_started
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:8700/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 20s
@@ -40,8 +45,14 @@ services:
       retries: 3
     stop_grace_period: 30s
     restart: unless-stopped
+
+  # ── Optional ARL stack (third-party image, not built by this repository) ──
+  # Enable with: docker compose -f compose.yaml --profile arl up -d
+  # ARL_IMAGE is pinned to a digest on purpose; update it deliberately after
+  # verifying the upstream image. All credentials come from .env.
   arl-web:
-    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all}
+    profiles: ["arl"]
+    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all@sha256:f86d4a7167f35abad7b92ebdb9d10fab226d2c2bd137dadb21281aa1a5f25333}
     platform: linux/amd64
     restart: unless-stopped
     depends_on:
@@ -59,7 +70,11 @@ services:
     entrypoint: ["/opt/arl-entrypoint.sh"]
     environment:
       ARL_ROLE: web
-      ARL_API_KEY: ${ARL_TOKEN:-nianyun-local-arl-key}
+      ARL_API_KEY: ${ARL_TOKEN:-}
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER:-}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-}
       LANG: en_US.UTF-8
       TZ: Asia/Shanghai
     healthcheck:
@@ -69,7 +84,8 @@ services:
       start_period: 45s
       retries: 5
   arl-worker:
-    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all}
+    profiles: ["arl"]
+    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all@sha256:f86d4a7167f35abad7b92ebdb9d10fab226d2c2bd137dadb21281aa1a5f25333}
     platform: linux/amd64
     restart: unless-stopped
     depends_on:
@@ -85,11 +101,16 @@ services:
     entrypoint: ["/opt/arl-entrypoint.sh"]
     environment:
       ARL_ROLE: worker
-      ARL_API_KEY: ${ARL_TOKEN:-nianyun-local-arl-key}
+      ARL_API_KEY: ${ARL_TOKEN:-}
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER:-}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-}
       LANG: en_US.UTF-8
       TZ: Asia/Shanghai
   arl-scheduler:
-    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all}
+    profiles: ["arl"]
+    image: ${ARL_IMAGE:-honmashironeko/arl-docker-all@sha256:f86d4a7167f35abad7b92ebdb9d10fab226d2c2bd137dadb21281aa1a5f25333}
     platform: linux/amd64
     restart: unless-stopped
     depends_on:
@@ -103,10 +124,15 @@ services:
     entrypoint: ["/opt/arl-entrypoint.sh"]
     environment:
       ARL_ROLE: scheduler
-      ARL_API_KEY: ${ARL_TOKEN:-nianyun-local-arl-key}
+      ARL_API_KEY: ${ARL_TOKEN:-}
+      MONGO_ROOT_USER: ${MONGO_ROOT_USER:-}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-}
       LANG: en_US.UTF-8
       TZ: Asia/Shanghai
   arl-mongodb:
+    profiles: ["arl"]
     image: mongo:4.0.27
     platform: linux/amd64
     restart: unless-stopped
@@ -115,15 +141,16 @@ services:
       - ./deploy/arl/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     environment:
       MONGO_INITDB_DATABASE: arl
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-changeme-mongo-root}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
   arl-rabbitmq:
+    profiles: ["arl"]
     image: rabbitmq:3.13.1-management-alpine
     platform: linux/amd64
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-changeme-rabbitmq}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-arl}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-}
       RABBITMQ_DEFAULT_VHOST: arlv2host
 volumes:
   nianyun-data:

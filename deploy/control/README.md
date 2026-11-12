@@ -1,5 +1,29 @@
 # 控制面镜像：构建矩阵与纪律
 
+> **状态更新（2026-11-12）**：下面第一、二、四节里"GitHub 不可达 / 全量构建跑不通 /
+> 三阶段"是 2026-11-06 的历史结论，只对旧的 `commit` + `inject` 路线成立。当前
+> `Dockerfile` 已是四阶段多阶段构建（`blackbox-tools` → `build` → `tools` → `control`），
+> 并于 2026-11-12 实测全量构建成功：`nianyun:control-slim` = **4.26GB / 18 层**，
+> 20 个工具齐全，无挂载启动 `/health` 返回 200。第五节之后的"层数上限 / 扁平化 /
+> 事故记录"保留作旧路线的经验，不适用于当前 18 层镜像。
+>
+> **当前构建**（网络正常 / CI：默认值即上游源，无需 build-arg）：
+> ```bash
+> docker build -f deploy/control/Dockerfile -t nianyun:control-slim .
+> ```
+> 本机代理受限时可覆盖下载源（CI 上不要传 `GITHUB_PROXY_PREFIX`）：
+> ```bash
+> docker build -f deploy/control/Dockerfile -t nianyun:control-slim \
+>   --build-arg HTTP_PROXY=http://host.docker.internal:7897 \
+>   --build-arg HTTPS_PROXY=http://host.docker.internal:7897 \
+>   --build-arg APT_MIRROR=https://mirrors.cloud.tencent.com \
+>   --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
+>   --build-arg GITHUB_PROXY_PREFIX=https://gh-proxy.com/ .
+> ```
+> `Dockerfile.fast`（`compose.control.yaml` 默认）需要预置 base：
+> `--build-arg BASE_IMAGE=nianyun:control-slim`；只想跑控制面时用
+> `docker compose -f compose.control.yaml up -d --no-build`（见根 README）。
+
 本目录有三个 Dockerfile，它们不是"多个方案"，而是**一条约束链上的不同档位**。
 选错档位的代价很具体：用错一次就可能把镜像层数堆到内核上限，之后**任何**容器都起不来。
 

@@ -1,7 +1,10 @@
+# Template mounted into the third-party ARL image at /opt/arl/config-docker.yaml.
+# deploy/arl/entrypoint.sh substitutes the __*__ placeholders from environment
+# variables and writes /code/app/config.yaml. See THIRD_PARTY_NOTICES.md.
 CELERY:
-  BROKER_URL: "amqp://arl:arlpassword@arl-rabbitmq:5672/arlv2host"
+  BROKER_URL: "amqp://__RABBIT_USER__:__RABBIT_PASS__@arl-rabbitmq:5672/arlv2host"
 MONGO:
-  URI: "mongodb://admin:admin@arl-mongodb:27017/"
+  URI: "mongodb://__MONGO_USER__:__MONGO_PASS__@arl-mongodb:27017/"
   DB: "arl"
 GEOIP:
   CITY: "/data/GeoLite2/GeoLite2-City.mmdb"

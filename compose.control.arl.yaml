@@ -1,0 +1,20 @@
+# Optional override: attach the control plane to the ARL stack's network.
+#
+# Usage (after the ARL stack has been started and created `nianyun_default`):
+#   docker compose -f compose.control.yaml -f compose.control.arl.yaml up -d
+#
+# The network is created by `docker compose -f compose.yaml --profile arl up -d`
+# (project name `nianyun`). Override its name with NIANYUN_ARL_NETWORK when the
+# ARL stack runs under a different compose project. This file is intentionally
+# separate so a plain `docker compose -f compose.control.yaml up -d` needs no
+# external network and no ARL credentials.
+
+services:
+  nianyun:
+    networks:
+      - arl
+
+networks:
+  arl:
+    external: true
+    name: ${NIANYUN_ARL_NETWORK:-nianyun_default}

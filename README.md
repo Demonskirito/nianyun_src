@@ -37,7 +37,10 @@ There is no scope engine, target-origin confinement, CTF platform, flag submissi
 | `src/shared` | config, SQLite schema, execution gates, ledger |
 | `console/` | React operator desk (`:8700`) |
 | `deploy/control` | control-plane image with blackbox tools and Chromium |
-| `deploy/arl` | optional ARL stack |
+| `deploy/arl` | optional ARL stack configuration (third-party image) |
+| `compose.yaml` | control plane; ARL services behind `--profile arl` |
+| `compose.control.yaml` | control plane + sandbox sidecar |
+| `THIRD_PARTY_NOTICES.md` | provenance and license of `deploy/arl/` assets |
 | `resources/wordlists` | approved wordlists for content/API discovery |
 
 ## Requirements
@@ -88,6 +91,78 @@ That planner is read-only by design: GET/HEAD/OPTIONS plus one `Origin` probe, n
 verbs, no path guessing, and it plugs in at the same seam as the LLM, so the evidence
 ledger, closure audit, Observer review and acceptance gate all still apply.
 
+## Deployment with Docker
+
+Three compose entry points are provided:
+
+| File | Starts | Use when |
+|---|---|---|
+| `compose.control.yaml` | control plane + sandbox sidecar | recommended, no ARL required |
+| `compose.yaml` | control plane built from source | building the image yourself |
+| `compose.yaml --profile arl` | plus the optional ARL discovery stack | ARL discovery is wanted |
+
+```bash
+cp .env.example .env          # fill in credentials; .env is git-ignored
+docker compose -f compose.yaml up -d --build
+```
+
+That builds the control image from `deploy/control/Dockerfile` and starts only
+the console. The sidecar stack (`compose.control.yaml`) additionally needs a
+pre-built `nianyun:sandbox-service` image (see the build note in that file).
+Once both `nianyun:control` and the sandbox image exist:
+
+```bash
+docker build -f deploy/control/Dockerfile -t nianyun:control .
+docker compose -f compose.control.yaml up -d --no-build
+```
+
+`compose.control.yaml` defaults to `Dockerfile.fast` for fast local rebuilds from
+a pre-built base; `--no-build` skips it and uses the image built above. Behind a
+restrictive proxy the control image may need the mirror build args documented in
+`deploy/control/README.md`.
+
+The console listens on `http://127.0.0.1:8700/` (override with `NIANYUN_PORT`).
+On Windows, 8700 can fall inside the Hyper-V excluded port range; if binding
+fails with "forbidden by its access permissions", pick another `NIANYUN_PORT`.
+
+### Optional: ARL discovery stack
+
+ARL (Asset Reconnaissance Lighthouse) is an **external, optional** discovery
+provider. `src/asset/arl.ts` calls it over HTTP with a `Token` header; the
+control plane neither embeds nor builds ARL. Without `ARL_TOKEN`, the console
+starts normally and FOFA, manual import and HTTP seeds still work.
+
+The ARL stack is a third-party image. `compose.yaml` declares it and Docker
+Compose pulls it on demand — **no Dockerfile is needed** to install it:
+
+```bash
+# 1. Put ARL_TOKEN, MONGO_ROOT_USER / MONGO_ROOT_PASSWORD and
+#    RABBITMQ_DEFAULT_USER / RABBITMQ_DEFAULT_PASS in .env (see .env.example).
+#    Generate a token with: openssl rand -hex 24
+# 2. Start the ARL services (this also creates the shared `nianyun_default` network):
+docker compose -f compose.yaml --profile arl up -d
+# 3. If you use compose.control.yaml, attach the control plane to that network:
+docker compose -f compose.control.yaml -f compose.control.arl.yaml up -d
+```
+
+Notes:
+
+- ARL web UI is `https://127.0.0.1:5003/` (`ARL_PORT`); the control plane reaches
+  it at `ARL_URL` (default `http://arl-web:5003`) with the same `ARL_TOKEN`.
+- All five ARL services (web, worker, scheduler, mongodb, rabbitmq) sit behind
+  `profiles: ["arl"]`. A plain `docker compose -f compose.yaml up -d` starts only
+  the control plane and pulls none of those images.
+- `ARL_IMAGE` defaults to a **pinned digest** of `honmashironeko/arl-docker-all`.
+  It is a third-party image: verify its provenance before use and update the
+  digest deliberately. `deploy/arl/` only holds configuration mounted into it.
+- No default credentials ship with this repository. The ARL entrypoint refuses
+  to start when the token or mongo/rabbitmq credentials are missing.
+  `deploy/arl/mongo-init.js` still carries the upstream local-only web password —
+  change it before exposing ARL beyond localhost.
+- See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance and
+  licensing of the `deploy/arl/` assets.
+- Only point ARL at domains you own or are explicitly authorized to test.
+
 ## Blackbox safety model
 
 - Tool URLs are operator-supplied; methods and request bodies are limited by `BLACKBOX_RULES_DOCUMENT` (default GET/HEAD/OPTIONS/POST/PUT/PATCH/DELETE, JSON/form/raw/binary bodies).
@@ -122,4 +197,6 @@ npm test        # Node 22.19+ required
 
 ## License
 
-MIT
+MIT for the Nianyun source (`LICENSE`). The deployment assets under `deploy/arl/`
+are adapted from a third-party Apache-2.0 project; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and `LICENSES/Apache-2.0.txt`.

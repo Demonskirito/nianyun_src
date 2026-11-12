@@ -7,9 +7,10 @@ services:
       dockerfile: deploy/control/Dockerfile.fast
     image: ${NIANYUN_CONTROL_IMAGE:-nianyun:control}
     init: true
+    # Only the default network by default. To reach the optional ARL stack,
+    # append `-f compose.control.arl.yaml` (see README.md).
     networks:
       - default
-      - arl
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -127,9 +128,8 @@ volumes:
     name: nianyun-sandbox-state
 
 networks:
-  arl:
-    external: true
-    name: nianyun_default
+  # ARL 互通是可选项：默认栈不依赖任何外部网络。
+  # 需要连接 ARL 时追加 `-f compose.control.arl.yaml`（见 README.md）。
   # internal=true：没有默认路由。job 容器只能连到同样在这个网络上的 sandbox 服务，
   # 也就是唯一能到 Burp 的出口代理。
   sandbox-egress:

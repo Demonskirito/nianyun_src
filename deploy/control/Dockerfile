@@ -1,21 +1,33 @@
 # Control-plane image: console, API, bounded blackbox tools and persistent data.
 # It intentionally contains no VPN, ARL services or CTF runtime entrypoint.
 #
-# Build architecture (publish-friendly):
-#   blackbox-tools  prebuilt PD binaries (sha256-verified) — runtime needed
-#   build           Node/TS compile of the console + API
-#   tools           BUILDER stage: installs Go/Ruby/Python toolchains and compiles the
-#                   heavyweight security tools. This stage is DISCARDED; only its
-#                   compiled binaries / venvs are copied into the final image, so the
-#                   Go toolchain, build-essential, ruby-dev and git never reach the
-#                   shipped image.
-#   control         final runtime image: Node + the copied tool binaries/venvs only.
+# Build stages (only their outputs reach `control`):
+#   blackbox-tools  pinned ProjectDiscovery release binaries, sha256-verified
+#   build           Node/TS compile of the API + console, dev deps pruned
+#   tools           Go/Python tool artifacts; the whole stage is DISCARDED
+#   control         Node runtime + copied binaries/venvs/source trees only
+#
+# Network discipline (verified on Docker Desktop behind a host proxy):
+#   * The build container has NO direct outbound route. Every direct connection
+#     (deb.debian.org, mirrors.aliyun.com, github.com) times out. Keep the proxy
+#     injected by --build-arg HTTP_PROXY/HTTPS_PROXY in ALL RUN instructions.
+#   * node:*-bookworm-slim has no /etc/ssl/certs/ca-certificates.crt, so apt
+#     cannot validate any HTTPS mirror. Seed it from Node's bundled root CAs
+#     BEFORE the first apt-get update.
+#   * Defaults below are upstream sources so this file also builds on CI. On a
+#     proxied desktop, override APT_MIRROR, PIP_INDEX_URL, GO_DOWNLOAD_URL,
+#     GOPROXY and PLAYWRIGHT_DOWNLOAD_HOST with build-args for reachable mirrors.
+#   * If the host proxy has no working overseas exit, set GITHUB_PROXY_PREFIX
+#     to a GitHub mirror (e.g. https://gh-proxy.com/). Release assets are still
+#     verified against their pinned sha256, so a tampered mirror cannot pass.
 # syntax=docker/dockerfile:1.7
 
 ARG NODE_IMAGE=node:22.22.0-bookworm-slim
 
-# ── Stage: prebuilt blackbox CLI tools (sha256-verified) ─────────────────────
+# ── Stage: pinned ProjectDiscovery release binaries ─────────────────────────
 FROM ${NODE_IMAGE} AS blackbox-tools
+ARG APT_MIRROR=http://deb.debian.org
+ARG GITHUB_PROXY_PREFIX=
 ARG HTTPX_VERSION=1.12.0
 ARG HTTPX_SHA256=9d8439e8b6c9aa7d1e2314817a392e00d5178da3af5652f7475f88868f418f76
 ARG KATANA_VERSION=1.7.0
@@ -32,28 +44,50 @@ ARG GAU_VERSION=2.2.4
 ARG GAU_SHA256=10e2e248c37cafb0be3f6d2931125296b95cd4186066d596d47fa417237529a9
 ARG FFUF_VERSION=2.1.0
 ARG FFUF_SHA256=fc2c82736c14dcbea4daf3d3cf3878c1c4773008ba45c2bc0fceba7d17b40bb5
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl unzip \
- && for spec in \
-      "httpx|https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_amd64.zip|${HTTPX_SHA256}" \
-      "katana|https://github.com/projectdiscovery/katana/releases/download/v${KATANA_VERSION}/katana_${KATANA_VERSION}_linux_amd64.zip|${KATANA_SHA256}" \
-      "nuclei|https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip|${NUCLEI_SHA256}" \
-      "subfinder|https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_amd64.zip|${SUBFINDER_SHA256}" \
-      "dnsx|https://github.com/projectdiscovery/dnsx/releases/download/v${DNSX_VERSION}/dnsx_${DNSX_VERSION}_linux_amd64.zip|${DNSX_SHA256}" \
-      "naabu|https://github.com/projectdiscovery/naabu/releases/download/v${NAABU_VERSION}/naabu_${NAABU_VERSION}_linux_amd64.zip|${NAABU_SHA256}"; do \
+WORKDIR /opt/nianyun
+RUN set -eux; \
+    mkdir -p /etc/ssl/certs; \
+    node -e "require('fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('tls').rootCertificates.join('\n') + '\n')"; \
+    sed -i "s|http://deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-nianyun-apt; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl unzip; \
+    rm -rf /var/lib/apt/lists/*
+# Outputs go to a dedicated directory: copying the whole /usr/local/bin from a
+# Node-based stage would also copy (and duplicate) node/npm/npx into the runtime.
+# The cache mount keeps already verified assets across failed builds, so a
+# transient TLS reset on one download does not re-fetch the other seven.
+RUN --mount=type=cache,id=nianyun-assets,target=/opt/assets-cache \
+    set -eux; \
+    mkdir -p /opt/tool-bin /opt/assets-cache; \
+    for spec in \
+      "httpx|${GITHUB_PROXY_PREFIX}https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_amd64.zip|${HTTPX_SHA256}" \
+      "katana|${GITHUB_PROXY_PREFIX}https://github.com/projectdiscovery/katana/releases/download/v${KATANA_VERSION}/katana_${KATANA_VERSION}_linux_amd64.zip|${KATANA_SHA256}" \
+      "nuclei|${GITHUB_PROXY_PREFIX}https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip|${NUCLEI_SHA256}" \
+      "subfinder|${GITHUB_PROXY_PREFIX}https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_amd64.zip|${SUBFINDER_SHA256}" \
+      "dnsx|${GITHUB_PROXY_PREFIX}https://github.com/projectdiscovery/dnsx/releases/download/v${DNSX_VERSION}/dnsx_${DNSX_VERSION}_linux_amd64.zip|${DNSX_SHA256}" \
+      "naabu|${GITHUB_PROXY_PREFIX}https://github.com/projectdiscovery/naabu/releases/download/v${NAABU_VERSION}/naabu_${NAABU_VERSION}_linux_amd64.zip|${NAABU_SHA256}"; do \
       name="${spec%%|*}"; rest="${spec#*|}"; url="${rest%%|*}"; sha="${rest##*|}"; \
-      curl -fsSL "$url" -o "/tmp/${name}.zip"; echo "$sha  /tmp/${name}.zip" | sha256sum -c -; \
-      unzip -p "/tmp/${name}.zip" "$name" > "/usr/local/bin/${name}"; chmod 0755 "/usr/local/bin/${name}"; \
-    done \
- && for spec in \
-      "gau|https://github.com/lc/gau/releases/download/v${GAU_VERSION}/gau_${GAU_VERSION}_linux_amd64.tar.gz|${GAU_SHA256}" \
-      "ffuf|https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz|${FFUF_SHA256}"; do \
+      f="/opt/assets-cache/${name}.zip"; \
+      if ! echo "$sha  $f" | sha256sum -c - >/dev/null 2>&1; then \
+        curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 20 "$url" -o "$f"; \
+      fi; \
+      echo "$sha  $f" | sha256sum -c -; \
+      unzip -p "$f" "$name" > "/opt/tool-bin/${name}"; \
+      chmod 0755 "/opt/tool-bin/${name}"; \
+    done; \
+    for spec in \
+      "gau|${GITHUB_PROXY_PREFIX}https://github.com/lc/gau/releases/download/v${GAU_VERSION}/gau_${GAU_VERSION}_linux_amd64.tar.gz|${GAU_SHA256}" \
+      "ffuf|${GITHUB_PROXY_PREFIX}https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz|${FFUF_SHA256}"; do \
       name="${spec%%|*}"; rest="${spec#*|}"; url="${rest%%|*}"; sha="${rest##*|}"; \
-      curl -fsSL "$url" -o "/tmp/${name}.tar.gz"; echo "$sha  /tmp/${name}.tar.gz" | sha256sum -c -; \
-      tar -xOzf "/tmp/${name}.tar.gz" "$name" > "/usr/local/bin/${name}"; chmod 0755 "/usr/local/bin/${name}"; \
-    done \
- && rm -f /tmp/*.zip /tmp/*.tar.gz \
- && for name in httpx katana nuclei subfinder dnsx naabu gau ffuf; do "/usr/local/bin/$name" -version >/dev/null 2>&1 || true; done
+      f="/opt/assets-cache/${name}.tar.gz"; \
+      if ! echo "$sha  $f" | sha256sum -c - >/dev/null 2>&1; then \
+        curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 20 "$url" -o "$f"; \
+      fi; \
+      echo "$sha  $f" | sha256sum -c -; \
+      tar -xOzf "$f" "$name" > "/opt/tool-bin/${name}"; \
+      chmod 0755 "/opt/tool-bin/${name}"; \
+    done
 
 # ── Stage: Node/TS build of the console + API ───────────────────────────────
 FROM ${NODE_IMAGE} AS build
@@ -73,12 +107,20 @@ COPY tools.env.example.yaml ./
 RUN npm run build && npm prune --omit=dev \
  && rm -rf src console/src console/node_modules /root/.npm
 
-# ── Stage: toolchain builder for the heavyweight security tools ──────────────
-# Everything that needs Go / Ruby-dev / build-essential / git to BUILD lives here.
-# This whole stage is discarded; only its outputs are copied into `control`.
+# ── Stage: toolchain builder (discarded) ────────────────────────────────────
+# Go toolchain, gcc and git live ONLY here. The final image receives the compiled
+# binaries, the two venvs and the three source trees — never a compiler.
 FROM ${NODE_IMAGE} AS tools
-ARG GO_VERSION=1.24.6
-ARG GO_SHA256=bbca37cc395c974ffa4893ee35819ad23ebb27426df87af92e93a9ec66ef8712
+ARG APT_MIRROR=http://deb.debian.org
+ARG GITHUB_PROXY_PREFIX=
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG GOPROXY=https://goproxy.cn,direct
+# Go 1.25.10: dalfox v2.13.0 requires go >= 1.25.5 and trufflehog v3.99.2
+# declares toolchain go1.25.10. With Go 1.24.6 + GOTOOLCHAIN=auto the builder
+# silently downloaded a second ~58MB toolchain through the proxy.
+ARG GO_VERSION=1.25.10
+ARG GO_SHA256=42d4f7a32316aa66591eca7e89867256057a4264451aca10570a715b3637ba70
+ARG GO_DOWNLOAD_URL=https://mirrors.aliyun.com/golang
 ARG INTERACTSH_VERSION=v1.2.2
 ARG DALFOX_VERSION=v2.13.0
 ARG SUBJS_VERSION=v1.0.0
@@ -88,79 +130,96 @@ ARG JWT_TOOL_VERSION=v2.3.0
 ARG TRUFFLEHOG_VERSION=v3.99.2
 # graphql-cop has no tagged release; pin an exact commit for reproducibility.
 ARG GRAPHQLCOP_COMMIT=2b7e086efae672f28b419c7fcdfe6b48d846c9dc
-ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
-ARG PIP_DEFAULT_TIMEOUT=300
-ARG PIP_RETRIES=5
-ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
-    PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
-    PIP_RETRIES=${PIP_RETRIES}
 WORKDIR /opt/nianyun
-# 与 control 阶段保持一致：把 Debian 源换到阿里云镜像并开启 apt 重试。
-# 否则 tools 阶段直连 deb.debian.org（经代理约 40KB/s、35 分钟后还会在大包上 502），
-# 而 control 阶段走国内镜像是快的；这是多阶段拆分时漏掉的一处。
-RUN mkdir -p /etc/ssl/certs \
- && node -e "require('fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('tls').rootCertificates.join('\n') + '\n')" \
- && sed -i \
-      -e 's|http://deb.debian.org/debian-security|https://mirrors.aliyun.com/debian-security|g' \
-      -e 's|http://deb.debian.org/debian|https://mirrors.aliyun.com/debian|g' \
-      /etc/apt/sources.list.d/debian.sources \
- && printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-retries \
- && apt-get update \
- && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget git \
-      python3 python3-venv python3-dev python3-pip \
-      build-essential \
- && rm -rf /var/lib/apt/lists/*
-# Go toolchain (only used to compile the go-install tools below).
-RUN wget -q https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz -O /tmp/go.tar.gz \
- && echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c - \
- && tar -C /usr/local -xzf /tmp/go.tar.gz \
- && rm -f /tmp/go.tar.gz
-ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH
-# Python venvs (arjun/semgrep + graphql-cop). graphql-cop repo is pinned separately below.
-RUN python3 -m venv /opt/nianyun/tool-venv \
- && /opt/nianyun/tool-venv/bin/pip install --no-cache-dir --timeout 300 --retries 5 arjun semgrep
-RUN python3 -m venv /opt/nianyun/graphql-venv
-# Pinned git clones (testssl / jwt_tool).
-RUN git clone --depth 1 --branch ${TESTSSL_VERSION} https://github.com/testssl/testssl.sh.git /opt/nianyun/testssl.sh
-RUN git clone --depth 1 --branch ${JWT_TOOL_VERSION} https://github.com/ticarpi/jwt_tool.git /opt/nianyun/jwt_tool \
- && /opt/nianyun/tool-venv/bin/pip install --no-cache-dir --timeout 300 --retries 5 -r /opt/nianyun/jwt_tool/requirements.txt
-# Go-install tools (pinned versions → reproducible).
+RUN set -eux; \
+    mkdir -p /etc/ssl/certs; \
+    node -e "require('fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('tls').rootCertificates.join('\n') + '\n')"; \
+    sed -i "s|http://deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-nianyun-apt; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl git python3 python3-venv python3-dev gcc; \
+    rm -rf /var/lib/apt/lists/*
+# gcc + python3-dev are kept on purpose: graphql-cop pins simplejson==3.17.6,
+# which has no cp311 wheel and must be built from its sdist. Everything else
+# removed from the old layer was dead weight (build-essential's g++/make/dpkg-dev,
+# system python3-pip, wget — curl handles every download).
+RUN set -eux; \
+    curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors \
+      "${GO_DOWNLOAD_URL}/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz; \
+    echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c -; \
+    tar -C /usr/local -xzf /tmp/go.tar.gz; \
+    rm -f /tmp/go.tar.gz
+ENV PATH=/usr/local/go/bin:$PATH
+# Pinned source snapshots as tarballs (GitHub, optionally mirrored). Tarballs
+# avoid the git smart-HTTP protocol, which public GitHub mirrors do not relay.
+RUN set -eux; \
+    mkdir -p /opt/nianyun/testssl.sh /opt/nianyun/jwt_tool /opt/nianyun/graphql-cop; \
+    curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 20 \
+      "${GITHUB_PROXY_PREFIX}https://github.com/testssl/testssl.sh/archive/refs/tags/${TESTSSL_VERSION}.tar.gz" -o /tmp/testssl.tar.gz; \
+    tar -xzf /tmp/testssl.tar.gz -C /opt/nianyun/testssl.sh --strip-components=1; \
+    curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 20 \
+      "${GITHUB_PROXY_PREFIX}https://github.com/ticarpi/jwt_tool/archive/refs/tags/${JWT_TOOL_VERSION}.tar.gz" -o /tmp/jwt_tool.tar.gz; \
+    tar -xzf /tmp/jwt_tool.tar.gz -C /opt/nianyun/jwt_tool --strip-components=1; \
+    curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 20 \
+      "${GITHUB_PROXY_PREFIX}https://github.com/dolevf/graphql-cop/archive/${GRAPHQLCOP_COMMIT}.tar.gz" -o /tmp/graphql-cop.tar.gz; \
+    tar -xzf /tmp/graphql-cop.tar.gz -C /opt/nianyun/graphql-cop --strip-components=1; \
+    rm -f /tmp/*.tar.gz
+# Go tools: module downloads go through GOPROXY (proxied when a proxy is set).
+# GOTOOLCHAIN=local keeps the build on the pinned Go above instead of fetching
+# a second toolchain.
+# trufflehog cannot use `go install module@version`: its go.mod contains replace
+# directives, which Go rejects for a non-main module. Build the pinned source
+# archive as a main module instead.
 RUN --mount=type=cache,id=nianyun-go-mod,target=/root/go/pkg/mod,sharing=locked \
  --mount=type=cache,id=nianyun-go-build,target=/root/.cache/go-build,sharing=locked \
- export PATH=/usr/local/go/bin:$PATH \
- && GOTOOLCHAIN=auto go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@${INTERACTSH_VERSION} \
- && GOTOOLCHAIN=auto go install github.com/hahwul/dalfox/v2@${DALFOX_VERSION} \
- && GOTOOLCHAIN=auto go install github.com/lc/subjs@${SUBJS_VERSION} \
- && GOTOOLCHAIN=auto go install github.com/assetnote/kiterunner/cmd/kiterunner@${KITERUNNER_VERSION}
-# Trufflehog (pinned tag, compiled from source).
-RUN --mount=type=cache,id=nianyun-go-mod,target=/root/go/pkg/mod,sharing=locked \
- --mount=type=cache,id=nianyun-go-build,target=/root/.cache/go-build,sharing=locked \
- git clone --depth 1 --branch ${TRUFFLEHOG_VERSION} https://github.com/trufflesecurity/trufflehog.git /tmp/trufflehog \
- && export PATH=/usr/local/go/bin:$PATH \
- && cd /tmp/trufflehog \
- && CGO_ENABLED=0 GOTOOLCHAIN=auto go build -trimpath -ldflags "-s -w" -o /usr/local/bin/trufflehog . \
- && rm -rf /tmp/trufflehog
-# graphql-cop pinned commit.
-RUN git clone --depth 1 https://github.com/dolevf/graphql-cop.git /opt/nianyun/graphql-cop-pinned \
- && cd /opt/nianyun/graphql-cop-pinned && git fetch --depth 1 origin ${GRAPHQLCOP_COMMIT} && git checkout -q ${GRAPHQLCOP_COMMIT} \
- && /opt/nianyun/graphql-venv/bin/pip install --no-cache-dir --timeout 300 --retries 5 -r /opt/nianyun/graphql-cop-pinned/requirements.txt \
- && rm -rf /opt/nianyun/graphql-cop && mv /opt/nianyun/graphql-cop-pinned /opt/nianyun/graphql-cop
-# Launcher scripts + symlinks so the final stage only consumes outputs.
-RUN ln -sf /root/go/bin/interactsh-client /usr/local/bin/interactsh-client \
- && ln -sf /root/go/bin/dalfox /usr/local/bin/dalfox \
- && ln -sf /root/go/bin/subjs /usr/local/bin/subjs \
- && ln -sf /root/go/bin/kiterunner /usr/local/bin/kiterunner \
- && ln -sf /opt/nianyun/testssl.sh/testssl.sh /usr/local/bin/testssl.sh \
- && printf '#!/bin/sh\nexec /opt/nianyun/tool-venv/bin/python /opt/nianyun/jwt_tool/jwt_tool.py "$@"\n' > /usr/local/bin/jwt_tool \
- && printf '#!/bin/sh\nexec /opt/nianyun/graphql-venv/bin/python /opt/nianyun/graphql-cop/graphql-cop.py "$@"\n' > /usr/local/bin/graphql-cop \
- && chmod 0755 /usr/local/bin/jwt_tool /usr/local/bin/graphql-cop \
- && ln -sf /opt/nianyun/tool-venv/bin/arjun /usr/local/bin/arjun \
- && ln -sf /opt/nianyun/tool-venv/bin/semgrep /usr/local/bin/semgrep \
- && rm -rf /opt/nianyun/jwt_tool/.git /opt/nianyun/graphql-cop/.git /opt/nianyun/testssl.sh/.git
+    set -eux; \
+    export PATH=/usr/local/go/bin:$PATH \
+      CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=${GOPROXY}; \
+    go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@${INTERACTSH_VERSION}; \
+    go install github.com/hahwul/dalfox/v2@${DALFOX_VERSION}; \
+    go install github.com/lc/subjs@${SUBJS_VERSION}; \
+    go install github.com/assetnote/kiterunner/cmd/kiterunner@${KITERUNNER_VERSION}; \
+    mkdir -p /tmp/trufflehog-src /root/go/bin; \
+    curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 20 \
+      "${GITHUB_PROXY_PREFIX}https://github.com/trufflesecurity/trufflehog/archive/refs/tags/${TRUFFLEHOG_VERSION}.tar.gz" -o /tmp/trufflehog.tar.gz; \
+    tar -xzf /tmp/trufflehog.tar.gz -C /tmp/trufflehog-src --strip-components=1; \
+    (cd /tmp/trufflehog-src && go build -o /root/go/bin/trufflehog .); \
+    rm -rf /tmp/trufflehog-src /tmp/trufflehog.tar.gz
+# Python venvs: arjun/semgrep + jwt_tool deps share one, graphql-cop has its own
+# (its requests==2.25.1 conflicts with semgrep's newer requests).
+RUN set -eux; \
+    python3 -m venv /opt/nianyun/tool-venv; \
+    python3 -m venv /opt/nianyun/graphql-venv; \
+    export PIP_INDEX_URL=${PIP_INDEX_URL} PIP_NO_CACHE_DIR=1 \
+      PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=5; \
+    /opt/nianyun/tool-venv/bin/pip install arjun semgrep; \
+    /opt/nianyun/tool-venv/bin/pip install -r /opt/nianyun/jwt_tool/requirements.txt; \
+    /opt/nianyun/graphql-venv/bin/pip install -r /opt/nianyun/graphql-cop/requirements.txt
+# Collect only the artifacts the runtime needs into one directory.
+RUN set -eux; \
+    mkdir -p /opt/nianyun/tool-bin; \
+    cp /root/go/bin/interactsh-client /opt/nianyun/tool-bin/interactsh-client; \
+    cp /root/go/bin/dalfox /opt/nianyun/tool-bin/dalfox; \
+    cp /root/go/bin/subjs /opt/nianyun/tool-bin/subjs; \
+    cp /root/go/bin/kiterunner /opt/nianyun/tool-bin/kiterunner; \
+    if [ -f /root/go/bin/trufflehog ]; then cp /root/go/bin/trufflehog /opt/nianyun/tool-bin/trufflehog; \
+    elif [ -f /root/go/bin/v3 ]; then cp /root/go/bin/v3 /opt/nianyun/tool-bin/trufflehog; \
+    else echo "trufflehog binary was not produced" >&2; exit 1; fi; \
+    ln -s /opt/nianyun/tool-venv/bin/arjun /opt/nianyun/tool-bin/arjun; \
+    ln -s /opt/nianyun/tool-venv/bin/semgrep /opt/nianyun/tool-bin/semgrep; \
+    ln -s /opt/nianyun/testssl.sh/testssl.sh /opt/nianyun/tool-bin/testssl.sh; \
+    printf '#!/bin/sh\nexec /opt/nianyun/tool-venv/bin/python /opt/nianyun/jwt_tool/jwt_tool.py "$@"\n' > /opt/nianyun/tool-bin/jwt_tool; \
+    printf '#!/bin/sh\nexec /opt/nianyun/graphql-venv/bin/python /opt/nianyun/graphql-cop/graphql-cop.py "$@"\n' > /opt/nianyun/tool-bin/graphql-cop; \
+    chmod 0755 /opt/nianyun/tool-bin/jwt_tool /opt/nianyun/tool-bin/graphql-cop
 
 # ── Stage: final runtime image ──────────────────────────────────────────────
 FROM ${NODE_IMAGE} AS control
+ARG APT_MIRROR=http://deb.debian.org
+# Playwright browsers come from a domestic mirror too; the default CDN is only
+# reachable through the (slow) proxy on this network. Override with a build-arg
+# when building from a network where the official CDN is faster.
+ARG PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
 WORKDIR /opt/nianyun
 ENV NODE_ENV=production \
     NIANYUN_REPO_ROOT=/opt/nianyun \
@@ -184,54 +243,45 @@ ENV NODE_ENV=production \
     WPSCAN_PATH=/usr/local/bin/wpscan \
     TRUFFLEHOG_PATH=/usr/local/bin/trufflehog \
     SEMGREP_PATH=/usr/local/bin/semgrep \
-    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-    PIP_DEFAULT_TIMEOUT=300 \
-    PIP_RETRIES=5 \
     PATH=/opt/nianyun/bin:/opt/nianyun/node_modules/.bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
-# Runtime-only packages. NOTE: no build-essential, no ruby-dev, no git, no Go toolchain.
-RUN --mount=type=cache,id=nianyun-apt-cache,target=/var/cache/apt,sharing=locked \
- --mount=type=cache,id=nianyun-apt-lists,target=/var/lib/apt/lists,sharing=locked \
- --mount=type=cache,id=nianyun-playwright,target=/root/.cache/ms-playwright,sharing=locked \
-    mkdir -p /etc/ssl/certs \
- && node -e "require('fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('tls').rootCertificates.join('\n') + '\n')" \
- && sed -i \
-      -e 's|http://deb.debian.org/debian-security|https://mirrors.aliyun.com/debian-security|g' \
-      -e 's|http://deb.debian.org/debian|https://mirrors.aliyun.com/debian|g' \
-      /etc/apt/sources.list.d/debian.sources \
- && printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-retries \
- && apt-get update \
- && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget libcurl4 bsdextrautils procps \
-      python3 ruby ruby-dev build-essential sqlmap \
- && (npx playwright install-deps chromium || npx playwright install-deps chromium || npx playwright install-deps chromium) \
- && npx playwright install chromium \
- && gem install --no-document wpscan \
- && apt-get purge -y --auto-remove ruby-dev build-essential \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/*/.links 2>/dev/null || true
-# Copy compiled tools from the builder stage (no toolchain comes along).
-COPY --from=tools /usr/local/bin/ /usr/local/bin/
-COPY --from=tools /root/go/bin/ /root/go/bin/
+# Runtime packages. ruby-dev/build-essential exist only to compile wpscan's
+# native gems and are purged inside this same layer, so they never ship.
+RUN set -eux; \
+    mkdir -p /etc/ssl/certs; \
+    node -e "require('fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('tls').rootCertificates.join('\n') + '\n')"; \
+    sed -i "s|http://deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    printf 'Acquire::Retries "5";\n' > /etc/apt/apt.conf.d/80-nianyun-apt; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl openssl libcurl4 bsdextrautils procps \
+      python3 ruby ruby-dev build-essential sqlmap; \
+    rm -rf /var/lib/apt/lists/*
+# Tool artifacts (no toolchain, no /root/go/bin, no second copy of node/npm).
+COPY --from=blackbox-tools /opt/tool-bin/ /usr/local/bin/
+COPY --from=tools /opt/nianyun/tool-bin/ /usr/local/bin/
 COPY --from=tools /opt/nianyun/tool-venv /opt/nianyun/tool-venv
 COPY --from=tools /opt/nianyun/graphql-venv /opt/nianyun/graphql-venv
 COPY --from=tools /opt/nianyun/jwt_tool /opt/nianyun/jwt_tool
 COPY --from=tools /opt/nianyun/graphql-cop /opt/nianyun/graphql-cop
 COPY --from=tools /opt/nianyun/testssl.sh /opt/nianyun/testssl.sh
-COPY --from=blackbox-tools /usr/local/bin/httpx /usr/local/bin/httpx
-COPY --from=blackbox-tools /usr/local/bin/katana /usr/local/bin/katana
-COPY --from=blackbox-tools /usr/local/bin/nuclei /usr/local/bin/nuclei
-COPY --from=blackbox-tools /usr/local/bin/subfinder /usr/local/bin/subfinder
-COPY --from=blackbox-tools /usr/local/bin/dnsx /usr/local/bin/dnsx
-COPY --from=blackbox-tools /usr/local/bin/naabu /usr/local/bin/naabu
-COPY --from=blackbox-tools /usr/local/bin/gau /usr/local/bin/gau
-COPY --from=blackbox-tools /usr/local/bin/ffuf /usr/local/bin/ffuf
 # Application.
 COPY --from=build /opt/nianyun/ /opt/nianyun/
 COPY deploy/control/config.yaml /opt/nianyun/deploy/control/config.yaml
 COPY deploy/control/entrypoint.sh /usr/local/bin/nianyun-control
-RUN ln -sf /usr/bin/sqlmap /usr/local/bin/sqlmap \
- && chmod 0755 /usr/local/bin/nianyun-control \
- && mkdir -p /opt/nianyun/data/config
+RUN set -eux; \
+    export PLAYWRIGHT_DOWNLOAD_HOST=${PLAYWRIGHT_DOWNLOAD_HOST}; \
+    /opt/nianyun/node_modules/.bin/playwright install-deps chromium; \
+    /opt/nianyun/node_modules/.bin/playwright install chromium; \
+    gem install --no-document wpscan; \
+    apt-get purge -y --auto-remove ruby-dev build-essential; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    ln -sf /usr/bin/sqlmap /usr/local/bin/sqlmap; \
+    sed -i 's/\r$//' /usr/local/bin/nianyun-control; \
+    find /opt/nianyun/bin -type f -exec sed -i 's/\r$//' {} +; \
+    find /opt/nianyun/deploy/unified -type f -name '*.sh' -exec sed -i 's/\r$//' {} +; \
+    chmod 0755 /usr/local/bin/nianyun-control /opt/nianyun/bin/*; \
+    mkdir -p /opt/nianyun/data/config
 EXPOSE 8700
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8700/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
