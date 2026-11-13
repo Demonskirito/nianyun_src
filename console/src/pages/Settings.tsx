@@ -15,10 +15,20 @@ const DEFAULT_BLACKBOX_OBSERVER_PROMPT = "你是只读 Observer。审阅主 Agen
 
 type SaveResult = { ok?: boolean; error?: string };
 
+const SETTINGS_SECTIONS = [
+  { id: "asset-agent-sheet", label: "资产评分 Agent" },
+  { id: "blackbox-agent-sheet", label: "黑盒主 Agent 与工具" },
+  { id: "arl-sheet", label: "ARL 资产发现" },
+  { id: "fofa-sheet", label: "FOFA 资产发现" },
+  { id: "tools-sheet", label: "工具开关" },
+  { id: "locale-sheet", label: "语言" },
+];
+
 export function SettingsPage() {
   const { t, lang, setLang, llm, flash, setFlash, loadSettings } = useDesk();
   const nav = useNavigate();
   const [arl, setArl] = useState({ url: "", token: "" });
+  const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS[0].id);
   const [assetAgent, setAssetAgent] = useState({ url: "", model: "", key: "", prompt: "", ruleVersion: "asset-page-v1" });
   const [blackbox, setBlackbox] = useState({ url: "", model: "", key: "", prompt: "", observerPrompt: "", burpProxy: "", burpRequired: "true", ignoreHttps: "true", burpBridgeUrl: "", burpBridgeToken: "", interactiveExec: "false", sandboxUrl: "" });
   const [fofa, setFofa] = useState({ url: "", key: "" });
@@ -28,6 +38,23 @@ export function SettingsPage() {
   const group = (name: keyof LlmSettings, key: string): LlmKeyState => ((llm[name] as Record<string, LlmKeyState>) || {})[key] || {};
 
   useEffect(() => { void loadSettings(); }, [loadSettings]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: "-15% 0px -75% 0px", threshold: 0 }
+    );
+    SETTINGS_SECTIONS.forEach((s) => {
+      const el = document.getElementById(s.id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const g = (name: keyof LlmSettings, key: string) => group(name, key);
@@ -67,7 +94,26 @@ export function SettingsPage() {
 
   return (
     <section className="page settings-page">
-      <Flash id="settings" flash={flash} />
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="设置分区">
+          <span className="settings-nav-title">设置</span>
+          <ul>
+            {SETTINGS_SECTIONS.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  className={"settings-nav-item" + (activeSection === s.id ? " is-active" : "")}
+                  onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                >
+                  {s.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="settings-content">
+          <Flash id="settings" flash={flash} />
 
       <section className="sheet" id="asset-agent-sheet">
         <header className="sheet-head">
@@ -244,6 +290,8 @@ export function SettingsPage() {
           <Radio.Button value="en">English</Radio.Button>
         </Radio.Group>
       </section>
+        </div>
+      </div>
     </section>
   );
 }

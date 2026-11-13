@@ -116,6 +116,15 @@ export function BlackboxPage() {
   const [evidenceTotal, setEvidenceTotal] = useState(0);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
+  // 粘顶模式：时间线最新在上、自动刷；新事件从顶部进入，视口停在顶部即"跟随最新"。
+  // firstId/lastId 用 ref 存，避免轮询闭包拿到过期值；events 数组恒为"新→旧"。
+  const EVENTS_LIMIT = 50;
+  const EVIDENCE_LIMIT = 24;
+  const eventsFirstIdRef = useRef(0); // 已加载窗口里最旧的 id（翻更早的游标）
+  const eventsLastIdRef = useRef(0);  // 已加载窗口里最新的 id（拉更新的游标）
+  const eventsScrollRef = useRef<HTMLDivElement | null>(null);
+  const evidenceScrollRef = useRef<HTMLDivElement | null>(null);
+  const [newEventCount, setNewEventCount] = useState(0); // 滚去看历史时又到达的新事件数（顶部小药丸）
   const projectId = params.get("project") || projects[0]?.id || "";
   const selectedCandidate = candidates.find((item) => item.id === selectedCandidateId);
 
@@ -165,31 +174,91 @@ export function BlackboxPage() {
     } catch { /* 单条缺失不阻塞 */ }
   }, [projectId, candidates]);
 
-  // 分页拉取会话时间线（old→new），"加载更多"时追加，避免一次性渲染上万条。
-  const loadEvents = useCallback(async (sessionId: string, reset = false) => {
+  // 会话时间线：dir=desc 取"新→旧"；newer 用 since 游标拉新，older 用 before 游标翻历史。
+  // events 数组恒为"新→旧"，新事件从数组头部进入，配合粘顶视口即"自动跟随最新"。
+  const loadEvents = useCallback(async (sessionId: string, mode: "newest" | "newer" | "older" = "newest") => {
     if (!projectId) return;
+    if (mode === "newer" && eventsLastIdRef.current === 0) return;
+    if (mode === "older" && eventsFirstIdRef.current === 0) return;
     setEventsLoading(true);
     try {
-      const offset = reset ? 0 : events.length;
-      const rec = await api<{ items?: BEvent[]; total?: number }>(`/api/projects/${encodeURIComponent(projectId)}/blackbox-sessions/${encodeURIComponent(sessionId)}/events?limit=50&offset=${offset}`);
+      let q = `events?dir=desc&limit=${EVENTS_LIMIT}`;
+      if (mode === "newer") q += `&since=${eventsLastIdRef.current}`;
+      else if (mode === "older") q += `&before=${eventsFirstIdRef.current}`;
+      const rec = await api<{ items?: BEvent[]; total?: number }>(`/api/projects/${encodeURIComponent(projectId)}/blackbox-sessions/${encodeURIComponent(sessionId)}/${q}`);
       const items = rec.items || [];
-      setEvents((prev) => (reset ? items : [...prev, ...items]));
+      if (mode === "newer") {
+        if (items.length) {
+          setEvents((prev) => {
+            const seen = new Set(prev.map((e) => e.id));
+            const fresh = items.filter((e) => !seen.has(e.id));
+            if (!fresh.length) return prev;
+            return [...fresh, ...prev]; // 新→旧，插到头部
+          });
+          eventsLastIdRef.current = Math.max(eventsLastIdRef.current, ...items.map((e) => Number(e.id)));
+          const el = eventsScrollRef.current;
+          const atTop = !el || el.scrollTop <= 4; // 用户停在顶部就让他继续看最新
+          if (!atTop) setNewEventCount((c) => c + items.length);
+        }
+      } else if (mode === "older") {
+        if (items.length) {
+          setEvents((prev) => {
+            const seen = new Set(prev.map((e) => e.id));
+            const fresh = items.filter((e) => !seen.has(e.id));
+            if (!fresh.length) return prev;
+            return [...prev, ...fresh]; // 更旧的接到底部
+          });
+          eventsFirstIdRef.current = Math.min(eventsFirstIdRef.current || Number.MAX_SAFE_INTEGER, ...items.map((e) => Number(e.id)));
+        }
+      } else {
+        // newest：重置窗口到最新一屏
+        setEvents(items);
+        if (items.length) {
+          eventsLastIdRef.current = Math.max(...items.map((e) => Number(e.id)));
+          eventsFirstIdRef.current = Math.min(...items.map((e) => Number(e.id)));
+        }
+        setNewEventCount(0);
+        requestAnimationFrame(() => { if (eventsScrollRef.current) eventsScrollRef.current.scrollTop = 0; });
+      }
       setEventsTotal(Number(rec.total ?? 0));
     } finally { setEventsLoading(false); }
-  }, [projectId, events.length]);
+  }, [projectId]);
 
-  // 分页拉取 Evidence Ledger（new→old）。
+  // 分页拉取 Evidence Ledger（后端已 new→old）。追加更旧的一页到底部，按 id 去重防重复。
   const loadEvidence = useCallback(async (sessionId: string, reset = false) => {
     if (!projectId) return;
     setEvidenceLoading(true);
     try {
       const offset = reset ? 0 : evidence.length;
-      const rec = await api<{ items?: BEvidence[]; total?: number }>(`/api/projects/${encodeURIComponent(projectId)}/blackbox-sessions/${encodeURIComponent(sessionId)}/evidence?limit=24&offset=${offset}`);
+      const rec = await api<{ items?: BEvidence[]; total?: number }>(`/api/projects/${encodeURIComponent(projectId)}/blackbox-sessions/${encodeURIComponent(sessionId)}/evidence?limit=${EVIDENCE_LIMIT}&offset=${offset}`);
       const items = rec.items || [];
-      setEvidence((prev) => (reset ? items : [...prev, ...items]));
+      setEvidence((prev) => {
+        if (reset) return items;
+        const seen = new Set(prev.map((e) => e.id));
+        const fresh = items.filter((e) => !seen.has(e.id));
+        return fresh.length ? [...prev, ...fresh] : prev;
+      });
       setEvidenceTotal(Number(rec.total ?? 0));
     } finally { setEvidenceLoading(false); }
   }, [projectId, evidence.length]);
+
+  // 时间线滚到接近底部时自动翻更早（替代手动"加载更多"）；滚回顶部则清掉"新事件"药丸。
+  const onEventsScroll = () => {
+    const el = eventsScrollRef.current;
+    if (!el) return;
+    if (el.scrollTop <= 4 && newEventCount) setNewEventCount(0);
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 240 && !eventsLoading && events.length < eventsTotal && eventsFirstIdRef.current > 0) {
+      void loadEvents(current!.id, "older");
+    }
+  };
+  // 证据台账滚到底部自动加载更早一页。
+  const onEvidenceScroll = () => {
+    const el = evidenceScrollRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 240 && !evidenceLoading && evidence.length < evidenceTotal) {
+      void loadEvidence(current!.id);
+    }
+  };
 
   // 拉单个会话详情。light=true 只取状态/环境/checkpoint（不含 events/evidence 巨量数组），
   // 用于轮询与首屏秒开；合并时保留已分页加载的 events/evidence，避免实时进度被清空。
@@ -206,7 +275,7 @@ export function BlackboxPage() {
       const { events: _e, evidence: _v, ...rest } = session as BlackboxSession & Record<string, unknown>;
       setCurrent((prev) => (prev && prev.id === sessionId ? { ...prev, ...rest } : rest as BlackboxSession));
       setEvents([]); setEvidence([]); setEventsTotal(0); setEvidenceTotal(0);
-      void loadEvents(sessionId, true);
+      void loadEvents(sessionId, "newest");
       void loadEvidence(sessionId, true);
     }
     return session;
@@ -260,6 +329,8 @@ export function BlackboxPage() {
         const list = await api<{ items?: BlackboxSession[] }>(`/api/projects/${encodeURIComponent(projectId)}/blackbox-sessions`);
         setSessions(list.items || []);
         void loadFocus(sessionId);
+        // 时间线粘顶自动刷：拉取最新事件；若用户在顶部则自然跟随，否则累加"新事件"药丸。
+        void loadEvents(sessionId, "newer");
       } catch { /* 瞬时网络抖动忽略，下一轮再试 */ }
     }, 1500);
     return () => window.clearInterval(timer);
@@ -747,12 +818,39 @@ export function BlackboxPage() {
           <details><summary>端点清单 · {Object.keys(current?.checkpoint?.endpoints || {}).length}</summary>{Object.entries(current?.checkpoint?.endpoints || {}).map(([url, fact]) => <p key={url}>{url}<span className="help"> · 证据 {fact.evidence_ids.length} · 任务 {fact.task_ids.join(", ")}</span></p>)}</details>
           <details><summary>工具缺口 · {toolGaps.length}</summary>{toolGaps.length ? toolGaps.map((gap) => <p key={gap.need}><Tag color={gap.missing ? "red" : "gold"}>{gap.missing ? "清单里没有" : "已注册但不够用"}</Tag>{gap.need}<span className="help"> · 点名 {gap.tool || "无"} · 现在兜底 {gap.alternative || "无"}{gap.why ? ` · ${gap.why}` : ""}</span></p>) : <p className="empty-hint">主 Agent 尚未上报工具缺口：缺能力时会写进 tool_gaps，这里列出可采购/可配置的清单。</p>}</details>
         </div></div></Card>
-        <Card title={<div className="card-title-row"><span>会话时间线</span><span className="count-badge">{eventCount}</span><span className="section-note">主 Agent / Observer / 工具</span></div>}><div className="agent-events">{events.length ? events.map((event) => <div className={`agent-event ${event.actor}`} key={event.id}><div className="event-marker">●</div><div className="event-body"><div className="event-head"><strong>{actorLabel[event.actor] || event.actor}</strong><Tag>{event.kind}</Tag><span>{new Date(event.created_at * 1000).toLocaleTimeString()}</span></div><p>{event.text}</p></div></div>) : <p className="empty-hint">尚无会话事件。</p>}</div>{current && eventsTotal > events.length && <div className="load-more-bar"><Button size="small" loading={eventsLoading} onClick={() => void loadEvents(current.id)}>加载更多时间线（已显示 {events.length}/{eventsTotal}）</Button></div>}</Card>
-        <Card title={<div className="card-title-row"><span>Evidence Ledger</span><span className="count-badge">{evidenceCount}</span></div>}><div className="blackbox-evidence">{evidence.length ? evidence.map((item) => {
-          const filename = item.artifact_path?.split("/").pop();
-          const artifactUrl = filename && current ? `/api/projects/${encodeURIComponent(projectId)}/blackbox-sessions/${encodeURIComponent(current.id)}/artifacts/${encodeURIComponent(filename)}` : "";
-          return <div className="evidence-card" key={item.id}><div className="evidence-head"><Tag>{item.kind}</Tag><span>{item.source}</span><span>{item.confidence}</span><code>{item.id}</code></div><p>{item.summary}</p>{artifactUrl && item.artifact_path?.endsWith(".png") && <a href={artifactUrl} target="_blank" rel="noreferrer"><img className="blackbox-evidence-image" src={artifactUrl} alt={item.summary} /></a>}{artifactUrl && !item.artifact_path?.endsWith(".png") && <a href={artifactUrl} target="_blank" rel="noreferrer">查看原始工具输出</a>}</div>;
-        }) : <p className="empty-hint">环境检查、工具输出、截图与请求响应将在这里留存。</p>}</div>{current && evidenceTotal > evidence.length && <div className="load-more-bar"><Button size="small" loading={evidenceLoading} onClick={() => void loadEvidence(current.id)}>加载更多证据（已显示 {evidence.length}/{evidenceTotal}）</Button></div>}</Card>
+        <Card title={<div className="card-title-row"><span>会话时间线</span><span className="count-badge">{eventCount}</span><span className="section-note">主 Agent / Observer / 工具</span></div>}>
+          <div className="agent-events" ref={eventsScrollRef} onScroll={onEventsScroll}>
+            {newEventCount > 0 && (
+              <button type="button" className="new-events-pill" onClick={() => { if (eventsScrollRef.current) eventsScrollRef.current.scrollTop = 0; setNewEventCount(0); void loadEvents(current!.id, "newer"); }}>
+                ↑ {newEventCount} 条新事件
+              </button>
+            )}
+            {events.length ? events.map((event) => <div className={`agent-event ${event.actor}`} key={event.id}><div className="event-marker">●</div><div className="event-body"><div className="event-head"><strong>{actorLabel[event.actor] || event.actor}</strong><Tag>{event.kind}</Tag><span>{new Date(event.created_at * 1000).toLocaleTimeString()}</span></div><p>{event.text}</p></div></div>) : <p className="empty-hint">尚无会话事件。</p>}
+            {events.length < eventsTotal && (
+              <div className="load-more-bar">
+                <Button size="small" loading={eventsLoading} onClick={() => current && void loadEvents(current.id, "older")}>
+                  {eventsLoading ? "加载中…" : `加载更早（已显示 ${events.length}/${eventsTotal}）`}
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
+        <Card title={<div className="card-title-row"><span>Evidence Ledger</span><span className="count-badge">{evidenceCount}</span></div>}>
+          <div className="blackbox-evidence" ref={evidenceScrollRef} onScroll={onEvidenceScroll}>
+            {evidence.length ? evidence.map((item) => {
+              const filename = item.artifact_path?.split("/").pop();
+              const artifactUrl = filename && current ? `/api/projects/${encodeURIComponent(projectId)}/blackbox-sessions/${encodeURIComponent(current.id)}/artifacts/${encodeURIComponent(filename)}` : "";
+              return <div className="evidence-card" key={item.id}><div className="evidence-head"><Tag>{item.kind}</Tag><span>{item.source}</span><span>{item.confidence}</span><code>{item.id}</code></div><p>{item.summary}</p>{artifactUrl && item.artifact_path?.endsWith(".png") && <a href={artifactUrl} target="_blank" rel="noreferrer"><img className="blackbox-evidence-image" src={artifactUrl} alt={item.summary} /></a>}{artifactUrl && !item.artifact_path?.endsWith(".png") && <a href={artifactUrl} target="_blank" rel="noreferrer">查看原始工具输出</a>}</div>;
+            }) : <p className="empty-hint">环境检查、工具输出、截图与请求响应将在这里留存。</p>}
+            {current && evidenceTotal > evidence.length && (
+              <div className="load-more-bar">
+                <Button size="small" loading={evidenceLoading} onClick={() => current && void loadEvidence(current.id)}>
+                  {evidenceLoading ? "加载中…" : `加载更多证据（已显示 ${evidence.length}/${evidenceTotal}）`}
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
       </section>
     </div>
     <DeleteGroupModal target={purgeTarget} busy={busy === "purge"} onCancel={() => setPurgeTarget(null)} onConfirm={() => void purgeGroup()} />

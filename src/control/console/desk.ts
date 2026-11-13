@@ -261,20 +261,31 @@ export class Desk {
   systemTools(): Record<string, unknown> {
     const statuses = this.toolStatuses();
     const projects = workspace.listProjects(this.cfg);
-    const sessions = projects.flatMap((project) => this.db.listBlackboxSessions(String(project.id), 100).map((session) => {
-      const full = this.db.getBlackboxSession(String(project.id), String(session.id));
-      const evidence = ((full?.evidence || []) as Record<string, unknown>[]).filter((item) => item.kind === "tool-result" || item.kind === "tool-error");
-      const used_tools = [...new Set(evidence.map((item) => String(item.source || "")).filter(Boolean))];
-      // 三层漏斗用量：tactical = 控制面标准工具，strategic = 沙箱 exec.*（旧证据没有 layer 字段时按工具名推断）。
-      const layers = { tactical: 0, strategic: 0 };
-      for (const item of evidence) {
-        const layer = String((item.data as Record<string, unknown> | undefined)?.layer || toolLayer(String(item.source || "")));
-        if (layer === "strategic") layers.strategic += 1;
-        else if (layer === "tactical") layers.tactical += 1;
+    // 一次全局投影取代「每个会话拉一次完整详情」：旧写法会把 4 万条事件与
+    // 6 千条证据（55MB data_json）全部读出来解析，只为了下面两个小统计。
+    // 语义保持不变：evidence 按 created_at DESC，used_tools 按首次出现去重，
+    // layer 优先取证据自带值、缺失时按工具名推断。
+    const usage = new Map<string, { used_tools: string[]; layers: { tactical: number; strategic: number } }>();
+    for (const row of this.db.listBlackboxToolUsage()) {
+      const key = `${String(row.project_id)}|${String(row.session_id)}`;
+      let stat = usage.get(key);
+      if (!stat) {
+        stat = { used_tools: [], layers: { tactical: 0, strategic: 0 } };
+        usage.set(key, stat);
       }
+      const source = String(row.source || "");
+      if (source && !stat.used_tools.includes(source)) stat.used_tools.push(source);
+      const layer = String(row.layer || toolLayer(source));
+      if (layer === "strategic") stat.layers.strategic += 1;
+      else if (layer === "tactical") stat.layers.tactical += 1;
+    }
+    const emptyUsage = () => ({ used_tools: [] as string[], layers: { tactical: 0, strategic: 0 } });
+    const sessions = projects.flatMap((project) => this.db.listBlackboxSessions(String(project.id), 100).map((session) => {
+      const stat = usage.get(`${String(project.id)}|${String(session.id)}`) || emptyUsage();
       return {
         id: String(session.id), project_id: String(project.id), project_name: String(project.name || project.id), target: session.target,
-        status: session.status, phase: session.phase, updated_at: session.updated_at, environment: session.environment, used_tools, layers,
+        status: session.status, phase: session.phase, updated_at: session.updated_at, environment: session.environment,
+        used_tools: stat.used_tools, layers: stat.layers,
       };
     }));
     const ruleState = blackboxRulesDiagnostics(this.cfg.tools_env.values);
@@ -1760,11 +1771,14 @@ export class Desk {
     return candidate ? { ok: true, item: candidate } : { ok: false, error: "candidate not found" };
   }
 
-  /** 会话时间线分页（前端"加载更多"用）。 */
-  projectBlackboxEvents(projectId: string, sessionId: string, limit = 50, offset = 0): Record<string, unknown> {
+  /** 会话时间线分页（前端"加载更多"/粘顶自动刷用）。dir=desc + before/since 游标支持翻历史与拉更新。 */
+  projectBlackboxEvents(
+    projectId: string, sessionId: string, limit = 50, offset = 0,
+    opts: { dir?: "asc" | "desc"; before?: number; since?: number } = {},
+  ): Record<string, unknown> {
     const pid = workspace.safeProjectId(projectId);
     if (!pid || !workspace.getProject(this.cfg, pid)) return { ok: false, error: "project not found" };
-    const rec = this.db.listBlackboxEvents(pid, sessionId, limit, offset);
+    const rec = this.db.listBlackboxEvents(pid, sessionId, limit, offset, opts);
     return { ok: true, items: rec.items, total: rec.total };
   }
 

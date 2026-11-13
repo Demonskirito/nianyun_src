@@ -639,15 +639,36 @@ export class Database {
     return { ...row, category, data: row.data_json ? JSON.parse(String(row.data_json)) : {} };
   }
 
-  /** 分页取会话时间线（旧→新），避免一次性把上万条事件塞进前端。 */
-  listBlackboxEvents(projectId: string, sessionId: string, limit = 50, offset = 0): { items: Record<string, unknown>[]; total: number } {
+  /**
+   * 分页取会话时间线。默认旧→新（offset 分页，老前端"加载更多"用）；
+   * dir=desc 时新→旧（最新在上），配合游标 before/since 做"粘顶自动刷 + 向下翻历史"，
+   * 避免实时插入新事件时 offset 错位。
+   */
+  listBlackboxEvents(
+    projectId: string, sessionId: string, limit = 50, offset = 0,
+    opts: { dir?: "asc" | "desc"; before?: number; since?: number } = {},
+  ): { items: Record<string, unknown>[]; total: number } {
     const pid = (projectId || "").trim();
     const sid = (sessionId || "").trim();
     if (!pid || !sid) return { items: [], total: 0 };
     const total = Number((this.db.prepare("SELECT COUNT(*) AS c FROM blackbox_events WHERE project_id=? AND session_id=?").get(pid, sid) as { c: number }).c || 0);
-    const items = (this.db.prepare("SELECT * FROM blackbox_events WHERE project_id=? AND session_id=? ORDER BY id ASC LIMIT ? OFFSET ?")
-      .all(pid, sid, Math.max(1, Math.min(500, Number(limit) || 50)), Math.max(0, Number(offset) || 0)) as Record<string, unknown>[])
-      .map((row) => this.blackboxEventView(row));
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    const order = opts.dir === "desc" ? "id DESC" : "id ASC"; // dir 是固定字面量，不入参，安全
+    let sql: string;
+    let params: unknown[];
+    if (opts.before !== undefined && opts.before !== null) {
+      // 翻更早：取 id 小于游标的那一批，仍按新→旧排，方便直接接在底部
+      sql = `SELECT * FROM blackbox_events WHERE project_id=? AND session_id=? AND id < ? ORDER BY ${order} LIMIT ?`;
+      params = [pid, sid, Number(opts.before), lim];
+    } else if (opts.since !== undefined && opts.since !== null) {
+      // 拉更新：取 id 大于游标的那一批（轮询用）
+      sql = `SELECT * FROM blackbox_events WHERE project_id=? AND session_id=? AND id > ? ORDER BY ${order} LIMIT ?`;
+      params = [pid, sid, Number(opts.since), lim];
+    } else {
+      sql = `SELECT * FROM blackbox_events WHERE project_id=? AND session_id=? ORDER BY ${order} LIMIT ? OFFSET ?`;
+      params = [pid, sid, lim, Math.max(0, Number(offset) || 0)];
+    }
+    const items = (this.db.prepare(sql).all(...(params as [])) as Record<string, unknown>[]).map((row) => this.blackboxEventView(row));
     return { items, total };
   }
 
@@ -933,6 +954,25 @@ export class Database {
         event_count: evCounts.get(String(row.id)) || 0,
       };
     });
+  }
+
+  /**
+   * 工具用量投影：systemTools() 只需要 tool-result / tool-error 的 source 与 layer。
+   *
+   * 旧实现为每个会话调用 getBlackboxSession(details=true)，把 blackbox_events 与
+   * blackbox_evidence 整行读出并逐条 JSON.parse（历史库 41,552 events + 6,509
+   * evidence / 55MB data_json），仅为算出 used_tools 与两个计数。这里改成一次全局
+   * 查询，layer 由 SQLite 侧 json_extract 提取，避免把整份证据反序列化进 JS。
+   * ORDER BY created_at DESC 与 blackboxSessionView 的 evidence 顺序一致。
+   */
+  listBlackboxToolUsage(): Array<{ project_id: string; session_id: string; source: string; layer: unknown }> {
+    return this.db.prepare(`
+      SELECT project_id, session_id, source,
+             CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.layer') END AS layer
+      FROM blackbox_evidence
+      WHERE kind IN ('tool-result', 'tool-error')
+      ORDER BY created_at DESC
+    `).all() as Array<{ project_id: string; session_id: string; source: string; layer: unknown }>;
   }
 
   getBlackboxSession(projectId: string, sessionId: string): Record<string, unknown> | null {

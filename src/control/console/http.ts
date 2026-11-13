@@ -82,18 +82,35 @@ function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
 // 已压缩的二进制不要重复 gzip（图片/字体/zip 等）。
 const NO_GZIP_CT = /^(image\/|video\/|audio\/|font\/|application\/(zip|gzip|x-gzip|pdf|octet-stream))/i;
 
+/** 挂在 ServerResponse 上的缓存协商元数据，避免改动所有调用点签名。 */
+type ResponseCacheMeta = {
+  acceptEncoding?: string;
+  ifNoneMatch?: string;
+  etagToSet?: string;
+  cacheControlToSet?: string;
+  cacheable?: boolean;
+};
+
 function send(res: ServerResponse, status: number, body: Buffer | string, contentType: string, head = false): void {
   const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  const meta = res as unknown as ResponseCacheMeta;
+  const cacheControl = String(meta.cacheControlToSet || "no-store");
+  const etag = String(meta.etagToSet || "");
   const headers: Record<string, string | number> = {
     "Content-Type": contentType,
-    "Cache-Control": "no-store",
+    "Cache-Control": cacheControl,
     Connection: "close",
   };
-  // ETag 必须在 gzip 分支之前写入，否则被压缩的响应（浏览器默认带 gzip）会丢掉它，导致 304 协商失效。
-  const etag = String((res as unknown as { etagToSet?: string }).etagToSet || "");
+  // ETag 与 304 判定都必须在 gzip 分支之前：压缩响应丢 ETag 会让协商失效，
+  // 而 304 不能携带 Content-Encoding / 响应体。
   if (etag) headers["ETag"] = etag;
+  if (meta.cacheable && etag && !head && String(meta.ifNoneMatch || "") === etag) {
+    res.writeHead(304, { ETag: etag, "Cache-Control": cacheControl, Connection: "close" });
+    res.end();
+    return;
+  }
   // 看客户端是否接受 gzip；仅对较大的文本/JSON 压缩，避免小包与已压缩二进制的开销。
-  const acceptEncoding = String((res as unknown as { acceptEncoding?: string }).acceptEncoding || "");
+  const acceptEncoding = String(meta.acceptEncoding || "");
   if (acceptEncoding.includes("gzip") && buf.length > 512 && !NO_GZIP_CT.test(contentType)) {
     const gz = gzipSync(buf, { level: 6 });
     headers["Content-Encoding"] = "gzip";
@@ -114,6 +131,32 @@ function send(res: ServerResponse, status: number, body: Buffer | string, conten
 
 function sendJson(res: ServerResponse, status: number, obj: unknown, head = false): void {
   send(res, status, JSON.stringify(obj), "application/json; charset=utf-8", head);
+}
+
+/**
+ * 可协商的静态型 JSON（目前只有 /api/tools）。
+ * routing / rules / tools 清单都由代码同源常量生成，内容不变即可命中 304；
+ * updated_at 是每次请求都变的时间戳，必须排除，否则 ETag 永不相等。
+ * `private, no-cache` 允许浏览器留存但每次重验证，命中 304 时浏览器把缓存的
+ * 完整 body 交给 fetch，前端 api() 无需改动。含凭据的 /api/settings 不走这里。
+ */
+function sendJsonCached(res: ServerResponse, payload: Record<string, unknown>, head = false): void {
+  const stable = { ...payload };
+  delete stable.updated_at;
+  const etag = `"${createHash("sha1").update(JSON.stringify(stable)).digest("hex").slice(0, 24)}"`;
+  const meta = res as unknown as ResponseCacheMeta;
+  meta.etagToSet = etag;
+  meta.cacheControlToSet = "private, no-cache";
+  meta.cacheable = true;
+  sendJson(res, 200, payload, head);
+}
+
+/** Vite 产物名带内容 hash（index-DUc7yrpT.js）；只有带 hash 才能安全 immutable。 */
+function staticAssetHash(path: string): string {
+  if (!path.startsWith("/assets/")) return "";
+  const name = path.split("/").pop() || "";
+  const match = /-([A-Za-z0-9_-]{8,})\.[A-Za-z0-9]+$/.exec(name);
+  return match?.[1] || "";
 }
 
 function staticRoots(cfg: Config): string[] {
@@ -274,7 +317,7 @@ async function handleGet(
     return;
   }
   if (path === "/api/tools") {
-    sendJson(res, 200, desk.systemTools(), head);
+    sendJsonCached(res, desk.systemTools(), head);
     return;
   }
   if (path === "/api/waf-bypasses") {
@@ -436,7 +479,12 @@ async function handleGet(
     if (parts.length === 4 && parts[1] === "blackbox-sessions" && parts[3] === "events") {
       const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit")) || 50));
       const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
-      const rec = desk.projectBlackboxEvents(pid, parts[2]!, limit, offset);
+      const dir = url.searchParams.get("dir") === "desc" ? "desc" : "asc";
+      const beforeRaw = url.searchParams.get("before");
+      const sinceRaw = url.searchParams.get("since");
+      const before = beforeRaw !== null && beforeRaw !== "" ? Number(beforeRaw) : undefined;
+      const since = sinceRaw !== null && sinceRaw !== "" ? Number(sinceRaw) : undefined;
+      const rec = desk.projectBlackboxEvents(pid, parts[2]!, limit, offset, { dir, before, since });
       sendJson(res, rec.ok ? 200 : 404, rec, head);
       return;
     }
@@ -506,6 +554,14 @@ async function handleGet(
   }
   const staticFile = readStatic(cfg, path);
   if (staticFile) {
+    const hash = staticAssetHash(path);
+    if (hash) {
+      // 内容寻址资源：浏览器一年内不再发请求；ETag/304 作为缓存被清后的兜底。
+      const meta = res as unknown as ResponseCacheMeta;
+      meta.etagToSet = `"${hash}"`;
+      meta.cacheControlToSet = "public, max-age=31536000, immutable";
+      meta.cacheable = true;
+    }
     send(res, 200, staticFile.body, staticFile.type, head);
     return;
   }
